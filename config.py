@@ -5,9 +5,9 @@ import json
 import time
 
 def init_config(path: pathlib.Path):
-    config = {'config':{'update_interval':15}, 'feeds':{}}
-    with open(path, 'w') as file:
-        json.dump(config, file)
+    with open('config_template.json') as template:
+        config = json.load(template)
+    save_config(path, config)
 
 
 def load_config(path: pathlib.Path):

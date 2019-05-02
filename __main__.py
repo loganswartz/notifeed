@@ -1,42 +1,55 @@
 #!/usr/bin/env python3
 
-import requests
+__version__ = "0.2"
+
+__author__ = "Logan Swartzendruber"
+__status__ = "Development"
+
+# builtin modules
+import argparse
+
+# 3rd party modules
 import atoma
+import requests
+
+# my modules
 import notifeed
-
-def definePath(path: str):
-    if path == None:
-        return Path.cwd()
-    else:
-        return Path(path).expanduser().resolve()
-
-
-def send_notifications(feed: str, post: atoma.RSSItem):
-    endpoints = union(config['config']['global_notifications'],
-                      config['feeds'][feed]['notifications'])
-    for dest in endpoints:
-        notify(dest, feed, post)
-
-
-def notify(dest: str, feed: str, post: atoma.RSSItem)
-    data = {
-        "attachments": {
-            "fallback":f"New post from {feed}: {post.title}",
-            "pretext":f"New post from {feed}:",
-            "color":"good",
-            "fields": {
-                "title":f"<{post.link}|{post.title}>",
-                "value":post.description,
-                "short":false
-            }
-        }
-    }
-    notification = requests.post(url=config['notifications'][dest],
-                                 json=data)
-    return notification.ok
+from notifeed.utils import definePath
 
 
 def main():
+    # parse arguments
+    cmdparser = argparse.ArgumentParser(
+        description=("A simple daemon to regularly parse RSS/Atom feeds and "
+            "send push notifications/webhooks when new content is detected"),
+        conflict_handler="resolve")
+    subparsers = cmdparser.add_subparsers(help="Subcommands",dest="subcommand")
+
+    # feed subparsers
+    feedparse = subparsers.add_parser("feed", help="Modify feeds")
+    feedsubparse = feedparse.add_subparsers(help="Feed commands", dest="farg")
+
+    feedrmparse = feedsubparse.add_parser("rm", help="Remove feed")
+    feedrmparse.add_argument("-n", "--name", help="Name of feed")
+
+    feedaddparse = feedsubparse.add_parser("add", help="Add feed")
+    feedaddparse.add_argument("-n", "--name", help="Name of feed to be added")
+    feedaddparse.add_argument("-u", "--url", help="URL for the feed")
+
+    # notification subparsers
+    notiparse = subparsers.add_parser("notification", help="Set notifications")
+    notisubparse = notiparse.add_subparsers(help="Notification commands",
+                                            dest="narg")
+    notiaddparse = notisubparse.add_parser("add", help="Add notification type")
+    notiaddparse.add_argument("-n", "--name", help="Name of notification")
+    notiaddparse.add_argument("-t", "--type", help="Name of notification type")
+    notiaddparse.add_argument("-d", "--data", help="Additional data")
+
+    notirmparse = feedsubparse.add_parser("rm", help="Remove notification")
+    notirmparse.add_argument("-n", "--name", help="Name of notification")
+
+
+
     configPath = definePath('~/.notifeed')
     fetchFlag = threading.Event()
 
@@ -55,4 +68,8 @@ def main():
                 continue
             else:
                 send_notifications(feed, newPost)
+
+
+if __name__ == '__main__':
+    main()
 

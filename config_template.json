@@ -12,6 +12,9 @@
 		}
 	},
 	"notifications":{
-		"slack":"https://hooks.slack.com/services/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"
+		"slack":{
+			"type":"slack",
+			"data":"https://hooks.slack.com/services/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"
+		}
 	}
 }
