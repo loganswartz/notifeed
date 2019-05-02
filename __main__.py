@@ -19,19 +19,17 @@ def send_notifications(feed: str, post: atoma.RSSItem):
 
 
 def notify(dest: str, feed: str, post: atoma.RSSItem)
-    data = {"attachments":[
-        {
+    data = {
+        "attachments": {
             "fallback":f"New post from {feed}: {post.title}",
             "pretext":f"New post from {feed}:",
             "color":"good",
-            "fields":[
-                {
-                    "title":f"<{post.link}|{post.title}>",
-                    "value":post.description,
-                    "short":false
-                }
-            ]
-        }]
+            "fields": {
+                "title":f"<{post.link}|{post.title}>",
+                "value":post.description,
+                "short":false
+            }
+        }
     }
     notification = requests.post(url=config['notifications'][dest],
                                  json=data)
@@ -40,16 +38,14 @@ def notify(dest: str, feed: str, post: atoma.RSSItem)
 
 def main():
     configPath = definePath('~/.notifeed')
-    url = 'https://mgba.io/feed.xml'
     fetchFlag = threading.Event()
 
     # check for config file, init if doesn't exist
-    if configPath.exists():
-        config = notifeed.config.load_config(configPath)
-    else:
+    if not configPath.exists():
         notifeed.config.init_config(configPath)
         print(f"Config not found, new config file created at {configPath}")
-        config = notifeed.config.load_config(configPath)
+
+    config = notifeed.config.load_config(configPath)
 
     # main loop, sleep and then parse feeds
     while not fetchFlag.wait(timeout=config['config']['update_interval']):
@@ -60,24 +56,3 @@ def main():
             else:
                 send_notifications(feed, newPost)
 
-
-
-"""
-{
-    'config':{
-            'update_interval': 15,
-            'global_notifications':[]
-        }
-    'feeds':{
-            'mGBA':{
-                'source':'https://mgba.io/feed.xml',
-                'latest_post_time':[],
-                'latest_post_name':'',
-                'notifications':['slack']
-                }
-        }
-    'notifications':{
-            'slack':'https://hooks.slack.com/services/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'
-        }
-}
-"""
