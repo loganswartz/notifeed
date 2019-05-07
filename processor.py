@@ -8,14 +8,21 @@ from argparse import Namespace
 
 # 3rd party modules
 from atoma import parse_rss_bytes, parse_atom_bytes
-from atoma.rss import RSSItem
 import requests
 
 # my modules
-from notifeed.utils import definePath
+from notifeed import config_path
+from notifeed.utils import definePath, strip_html, truncate, union
+from notifeed.feed_object import Feed, FeedEntry
 
 
 class Memory(object):
+    """
+    An object to handle the loading, saving, and interpreting of config files.
+
+    Typically used as a subobject in a FeedProcessor, and holds all the feed
+    and notification data when we are working with it.
+    """
 
     def __init__(self):
         self.config = {"update_interval": 15, "global_notifications": []}
@@ -24,41 +31,55 @@ class Memory(object):
 
 
     def load_config(self, path: Path):
+        """
+        Read a JSON config file from disk and convert it into a python object.
+        """
         if not path.exists():
             self.save_config(path)
             print(f"Config not found, new config file was created at '{path}'")
         else:
             with open(path) as file:
-                configJSON = json.load(file)
+                config_json = json.load(file)
 
-            self.config = configJSON['config']
-            self.feeds = configJSON['feeds']
-            self.notifications = configJSON['notifications']
+            self.config = config_json['config']
+            self.feeds = config_json['feeds']
+            self.notifications = config_json['notifications']
 
             # reconvert latest_post_time time data back to struct_time object
             for entry in self.feeds.values():
                 entry['latest_post_time'] = Time(entry['latest_post_time'])
 
 
-    def save_config(self, path: Path):
-        configJSON = {"config": self.config, "feeds": self.feeds,
+    def save_config(self, path: Path = definePath(config_path)):
+        """
+        Write data to a JSON config file on disk.
+        """
+        config_json = {"config": self.config, "feeds": self.feeds,
                       "notifications": self.notifications}
         with open(path, 'w') as file:
-            json.dump(configJSON, file, indent=4)
+            json.dump(config_json, file, indent=4)
 
 
 class FeedProcessor(object):
+    """
+    An object to check, fetch, parse, manipulate, and save RSS/Atom feeds.
 
+    Contains a Memory subobject that acts as the store of all the working data.
+    All the feed checking and decision-making on whether or not a new post
+    exists happens in functions of the FeedProcessor.
+    """
 
     def __init__(self):
         self.memory = Memory()
 
 
-    def load(self, path: Path = definePath('~/.notifeed')):
+    def load(self, path: Path = definePath(config_path)):
+        """Wrapper for Memory.load_config()"""
         self.memory.load_config(path)
 
 
-    def save(self, path: Path = definePath('~/.notifeed')):
+    def save(self, path: Path = definePath(config_path)):
+        """Wrapper for Memory.save_config()"""
         self.memory.save_config(path)
 
 
@@ -67,9 +88,9 @@ class FeedProcessor(object):
         Fetch a new copy of a remote RSS/Atom feed for parsing by check_feed()
         """
         try:
-            feed = parse_atom_bytes(requests.get(url).content)
+            feed = Feed(parse_atom_bytes(requests.get(url).content))
         except:
-            feed = parse_rss_bytes(requests.get(url).content)
+            feed = Feed(parse_rss_bytes(requests.get(url).content))
         return feed
 
 
@@ -80,40 +101,40 @@ class FeedProcessor(object):
         latest feed item if a new one is found, otherwise returns none.
         """
         # fetch newer version of feed
-        feedUrl = self.memory.feeds['source']
-        freshfeed = fetch_feed(feedUrl)
+        feed_url = self.memory.feeds[name]['source']
+        fresh_feed = self.fetch_feed(feed_url)
 
-        fetchedTitle = freshFeed.items[0].title
-        fetchedTime = freshFeed.items[0].pub_date.timetuple()
-        storedTitle = self.memory.feeds[name]['latest_post_name']
-        storedTime = self.memory.feeds[name]['latest_post_time']
+        fetched_title = fresh_feed.entries[0].title
+        fetched_time = fresh_feed.entries[0].publish_date
+        stored_title = self.memory.feeds[name]['latest_post_name']
+        stored_time = self.memory.feeds[name]['latest_post_time']
 
         # following line for eventually comparing latest post dates
-        if fetchedTime > storedTime and fetchedTitle != storedTitle:
-            update_stored_feed(name, freshFeed.items[0])
-            return freshFeed.items[0]
+        if fetched_time > stored_time or fetched_title != stored_title:
+            self.update_stored_feed(name, fresh_feed.entries[0])
+            return fresh_feed.entries[0]
         else:
             return None
 
 
-    def update_stored_feed(self, name: str, feed: RSSItem):
+    def update_stored_feed(self, name: str, feed: FeedEntry):
         """
         Update the 'latest post' data of a feed.
         """
         self.memory.feeds[name]['latest_post_name'] = feed.title
-        self.memory.feeds[name]['latest_post_time'] = feed.pub_date.timetuple()
+        self.memory.feeds[name]['latest_post_time'] = feed.publish_date
 
 
     def create_feed(self, name: str, url: str):
         """
-        Create a new feed to be monitored. Name is a nickname for the feed 
+        Create a new feed to be monitored. Name is a nickname for the feed
         (only for use by the user), and url is the URL of the actual RSS/Atom
         feed.
         """
         feed = self.fetch_feed(url)
         self.memory.feeds[name] = {'source': url,
-                        'latest_post_time': feed.items[0].pub_date.timetuple(),
-                        'latest_post_name': feed.items[0].title,
+                        'latest_post_time': feed.entries[0].publish_date,
+                        'latest_post_name': feed.entries[0].title,
                         'notifications': []}
 
 
@@ -122,6 +143,14 @@ class FeedProcessor(object):
         Destroy a previously-added feed.
         """
         del self.memory.feeds[name]
+
+
+    def list_feed(self):
+        """Print a list of all currently added feeds."""
+        string = '\nFeeds:\n\n'
+        for name, feed in self.memory.feeds.items():
+            string += f"{name} ({feed['source']})\n"
+        print(string)
 
 
     def create_noti(self, name: str, type: str, data: str):
@@ -175,15 +204,37 @@ class FeedProcessor(object):
 
 
     def test_noti(self, noti: str, feed: str):
-        post = self.fetch_feed(self.memory.feeds[feed]['source']).items[0]
+        """
+        Send a test notification using the latest post from the specified feed
+        and notification endpoint.
+        """
+        post = self.fetch_feed(self.memory.feeds[feed]['source']).entries[0]
         self.notify(noti, feed, post)
 
 
+    def list_noti(self):
+        """Lists all currently added notification endpoints."""
+        string = '\nNotifications:\n\n'
+        for name, noti in self.memory.notifications.items():
+            string += f"{name} (type: {noti['type']})\n"
+            string += f" --> Data: {noti['data']}\n"
+        print(string)
+
+
+    """
+    A bunch of wrapper functions to allow for them to be called through
+    argparse. If I didn't do this, I'd have to make all my functions have
+    a single parameter and run everything through argparse, which would make
+    calling them very difficult in basically every other situation.
+    """
     def create_feed_wrapper(self, args: Namespace):
         self.create_feed(args.name, args.url)
 
     def destroy_feed_wrapper(self, args: Namespace):
         self.destroy_feed(args.name)
+
+    def list_feed_wrapper(self, args: Namespace):
+        self.list_feed()
 
     def create_noti_wrapper(self, args: Namespace):
         self.create_noti(args.name, args.type, args.data)
@@ -200,22 +251,46 @@ class FeedProcessor(object):
     def test_noti_wrapper(self, args: Namespace):
         self.test_noti(args.name, args.feed)
 
+    def list_noti_wrapper(self, args: Namespace):
+        self.list_noti()
 
-    def send_notifications(self, feed: str, post: RSSItem):
-        endpoints = union(self.memory.config['global_notifications'],
-                          self.memory.feeds[feed]['notifications'])
+
+    def send_notifications(self, feed: str, post: FeedEntry):
+        """
+        Send all notifications about a new post to all assigned notification
+        endpoints.
+
+        Calculated via a union of global notifications and feed-specific
+        notifications.
+        """
+        global_list = self.memory.config['global_notifications']
+        local_list = self.memory.feeds[feed]['notifications']
+
+        # combine lists via union
+        endpoints = union(global_list, local_list)
         for dest in endpoints:
             self.notify(dest, feed, post)
 
 
-    def notify(self, dest: str, feed: str, post: RSSItem):
+    def notify(self, dest: str, feed: str, post: FeedEntry):
+        """
+        Send a single notification for a single post to a single endpoint.
+        """
         data = self.build_payload(dest, feed, post)
         post = requests.post(url=self.memory.notifications[dest]['data'],
                                      json=data)
         return post.ok
 
 
-    def build_payload(self, dest: str, feed: str, post: RSSItem):
+    def build_payload(self, dest: str, feed: str, post: FeedEntry):
+        """
+        Builds the JSON (or other) payload for whatever notification type you
+        have specified.
+
+        Currently, only Slack webhooks are supported, but adding in support for
+        other webhooks and/or endpoints (email, text, etc) could be added later
+        on down the line.
+        """
         if self.memory.notifications[dest]['type'] == 'slack':
             data = {
                 "attachments": [{
@@ -224,7 +299,7 @@ class FeedProcessor(object):
                     "color":"good",
                     "fields": [{
                         "title":post.title,
-                        "value":post.description[0:250] + '...',
+                        "value":truncate(strip_html(post.summary), 250),
                         "short":False
                     }]
                 }]

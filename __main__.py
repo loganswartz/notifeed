@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
-__version__ = "0.7"
+"""
+Notifeed.py: A simple daemon to regularly parse RSS/Atom feeds and send push
+notifications/webhooks when new content is detected.
+"""
+
+__version__ = "1.0"
 
 __author__ = "Logan Swartzendruber"
-__status__ = "Development"
+__status__ = "Production"
 
 # builtin modules
 import argparse
-import threading
-
-# 3rd party modules
-import atoma
-import requests
 
 # my modules
 from notifeed.utils import definePath
@@ -45,6 +45,10 @@ def main():
     fdestroy = feedsubparse.add_parser("destroy", help="Remove feed")
     fdestroy.add_argument("-n", "--name", help="Name of feed")
     fdestroy.set_defaults(func=feedProcessor.destroy_feed_wrapper)
+    # list_feed
+    flist = feedsubparse.add_parser("list", help="List feeds")
+    flist.add_argument("-n", "--name", help="Name of feed")
+    flist.set_defaults(func=feedProcessor.list_feed_wrapper)
 
     # notification subparsers
     notiparse = subparsers.add_parser("notification", help="Set notifications")
@@ -76,12 +80,16 @@ def main():
     ntest.add_argument("-n", "--name", help="Name of notification")
     ntest.add_argument("-f", "--feed", help="Name of feed")
     ntest.set_defaults(func=feedProcessor.test_noti_wrapper)
+    # list_feed
+    nlist = notisubparse.add_parser("list", help="List notifications")
+    nlist.add_argument("-n", "--name", help="Name of notification")
+    nlist.set_defaults(func=feedProcessor.list_noti_wrapper)
 
 
-
-    # parse args and decide what to do
-    # exit immediately after executing helper functions, otherwise proceed with
-    # main program
+    """
+    Parse arguments and invoke the chosen function; if no arguments are given,
+    no config function is called, and all the feeds are checked/parsed instead.
+    """
     args = cmdparser.parse_args()
     if args.command != None:
         # call appropriate function
@@ -91,22 +99,23 @@ def main():
 
 
     # main loop (parse feeds)
+    posts = 0
     for feed in feedProcessor.memory.feeds.keys():
         newPost = feedProcessor.check_feed(feed)
         if newPost is None:
             continue
         else:
             feedProcessor.send_notifications(feed, newPost)
+            posts += 1
+
+    if posts == 0:
+        print('No new posts found.')
+    else:
+        print(f"{posts} new posts found.")
 
     feedProcessor.save()
     exit(0)
 
-    """
-    Daemon mode: put main loop under the while
-    fetchFlag = threading.Event()
-
-    while not fetchFlag.wait(timeout=config['config']['update_interval']):
-    """
 
 if __name__ == '__main__':
     main()
