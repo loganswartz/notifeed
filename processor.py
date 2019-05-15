@@ -3,7 +3,7 @@
 # builtins
 import json
 from pathlib import Path
-from time import struct_time as Time
+from time import mktime, struct_time as Time
 from argparse import Namespace
 
 # 3rd party modules
@@ -42,20 +42,33 @@ class Memory(object):
                 config_json = json.load(file)
 
             self.config = config_json['config']
-            self.feeds = config_json['feeds']
+            for name, feed in config_json['feeds'].items():
+                self.feeds[name] = Feed(feed['source'], feed)
             self.notifications = config_json['notifications']
-
-            # reconvert latest_post_time time data back to struct_time object
-            for entry in self.feeds.values():
-                entry['latest_post_time'] = Time(entry['latest_post_time'])
 
 
     def save_config(self, path: Path = definePath(config_path)):
         """
         Write data to a JSON config file on disk.
         """
-        config_json = {"config": self.config, "feeds": self.feeds,
-                      "notifications": self.notifications}
+        config_json = {
+            "config": self.config,
+            "feeds": {},
+            "notifications": self.notifications
+        }
+
+        for name, feed in self.feeds.items():
+            config_json['feeds'][name] = {
+                'type': feed.type,
+                'source': feed.source,
+                'domain': feed.domain,
+                'favicon': feed.favicon,
+                'entries': [feed.entries[0].to_JSON()],
+                'notifications': []
+            }
+            # delete summary field because it's unnecessary
+            del config_json['feeds'][name]['entries'][0]['summary']
+
         with open(path, 'w') as file:
             json.dump(config_json, file, indent=4)
 
@@ -84,13 +97,17 @@ class FeedProcessor(object):
 
 
     def fetch_feed(self, url: str):
+        return Feed(url, fetch_raw_feed(url))
+
+
+    def fetch_raw_feed(self, url: str):
         """
         Fetch a new copy of a remote RSS/Atom feed for parsing by check_feed()
         """
         try:
-            feed = Feed(parse_atom_bytes(requests.get(url).content))
+            feed = parse_atom_bytes(requests.get(url).content)
         except:
-            feed = Feed(parse_rss_bytes(requests.get(url).content))
+            feed = parse_rss_bytes(requests.get(url).content)
         return feed
 
 
@@ -106,8 +123,8 @@ class FeedProcessor(object):
 
         fetched_title = fresh_feed.entries[0].title
         fetched_time = fresh_feed.entries[0].publish_date
-        stored_title = self.memory.feeds[name]['latest_post_name']
-        stored_time = self.memory.feeds[name]['latest_post_time']
+        stored_title = self.memory.feeds[name]['entries'][0]['title']
+        stored_time = self.memory.feeds[name]['entries'][0]['publish_date']
 
         # following line for eventually comparing latest post dates
         if fetched_time > stored_time or fetched_title != stored_title:
@@ -121,8 +138,7 @@ class FeedProcessor(object):
         """
         Update the 'latest post' data of a feed.
         """
-        self.memory.feeds[name]['latest_post_name'] = feed.title
-        self.memory.feeds[name]['latest_post_time'] = feed.publish_date
+        self.memory.feeds[name]['entries'][0] = feed
 
 
     def create_feed(self, name: str, url: str):
@@ -131,11 +147,7 @@ class FeedProcessor(object):
         (only for use by the user), and url is the URL of the actual RSS/Atom
         feed.
         """
-        feed = self.fetch_feed(url)
-        self.memory.feeds[name] = {'source': url,
-                        'latest_post_time': feed.entries[0].publish_date,
-                        'latest_post_name': feed.entries[0].title,
-                        'notifications': []}
+        self.memory.feeds[name] = Feed(url)
 
 
     def destroy_feed(self, name: str):
@@ -149,7 +161,7 @@ class FeedProcessor(object):
         """Print a list of all currently added feeds."""
         string = '\nFeeds:\n\n'
         for name, feed in self.memory.feeds.items():
-            string += f"{name} ({feed['source']})\n"
+            string += f"{name} ({feed.source})\n"
         print(string)
 
 
@@ -208,7 +220,7 @@ class FeedProcessor(object):
         Send a test notification using the latest post from the specified feed
         and notification endpoint.
         """
-        post = self.fetch_feed(self.memory.feeds[feed]['source']).entries[0]
+        post = self.memory.feeds[feed].fetch_feed().entries[0]
         self.notify(noti, feed, post)
 
 
@@ -291,17 +303,24 @@ class FeedProcessor(object):
         other webhooks and/or endpoints (email, text, etc) could be added later
         on down the line.
         """
+        feed_obj = self.memory.feeds[feed]
+
         if self.memory.notifications[dest]['type'] == 'slack':
             data = {
                 "attachments": [{
-                    "fallback":f"New post from {feed}: {post.title}",
-                    "pretext":f"New post from <{post.link}|{feed}>:",
-                    "color":"good",
-                    "fields": [{
-                        "title":post.title,
-                        "value":truncate(strip_html(post.summary), 250),
-                        "short":False
-                    }]
+                    "fallback": f"New post from {feed}: {post.title}",
+                    "color": "#36a64f",  # or 'good'
+                    "pretext": f"New post from <{feed_obj.source}|{feed}>:",
+                    "author_name": post.author['name'],
+                    "author_link": post.author['link'],
+                    "author_icon": "",
+                    "title": post.title,
+                    "title_link": post.link,
+                    "text": truncate(strip_html(post.summary), 250),
+                    "thumb_url": post.thumbnail,  # article thumbnail
+                    "footer": feed_obj.domain,  # site
+                    "footer_icon": feed_obj.favicon,  # site icon
+                    "ts": post.publish_date  # convert time to epoch time
                 }]
             }
 

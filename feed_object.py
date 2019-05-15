@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 
 import atoma
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse, urlunparse
+from pathlib import Path
 from notifeed.utils import strip_html
+from calendar import timegm
 
 
 class Feed(object):
@@ -12,34 +17,79 @@ class Feed(object):
     feeds appear identical in other parts of the program.
     """
 
-    # feed should be either an atoma.rss.RSSFeed or atoma.atom.AtomFeed object
-    def __init__(self, feed):
+    def __init__(self, url: str, feed):
 
-        self.entries = []
-
-        if isinstance(feed, atoma.atom.AtomFeed):
-            self.type = 'atom'
-            entries = feed.entries
-        elif isinstance(feed, atoma.rss.RSSChannel):
-            self.type = 'rss'
-            entries = feed.items
+        if isinstance(feed, dict):
+            """
+            Allow us to initialize from JSON, url is a misnomer in this case
+            but fits the other method better, which should be the only init
+            method used by users, JSON should only be for restoring from config
+            """
+            self.type = feed['type']
+            self.source = feed['source']
+            self.domain = feed['domain']
+            self.summary = ''
+            self.favicon = feed['favicon']
+            self.entries = [FeedEntry(entry) for entry in feed['entries']]
         else:
-            raise('Feed format not supported.')
+            self.entries = []
 
-        """
-        I may choose to add every feed entry to the Feed object in the future,
-        but for now I'm only importing the newest entry to save on unnecessary
-        CPU. In the future, importing every entry would allow for detecting
-        more than 1 new post at a time, as currently this only notifies you of
-        the *latest* new post, not *all* new posts since the last check.
-        """
-        # convert to FeedEntry object
-        self.entries.append(FeedEntry(entries[0]))
-        """
-        for entry in entries:
+            if isinstance(feed, atoma.atom.AtomFeed):
+                self.type = 'atom'
+                entries = feed.entries
+            elif isinstance(feed, atoma.rss.RSSChannel):
+                self.type = 'rss'
+                entries = feed.items
+            else:
+                raise('Feed format not supported.')
+
+            self.source = url
+
+            metadata = self.fetch_metadata(self.source)
+            self.domain = metadata['domain']
+            self.favicon = metadata['favicon']
+
             # convert to FeedEntry object
-            self.entries.append(FeedEntry(entry))
+            for entry in entries:
+                self.entries.append(FeedEntry(entry))
+
+
+    def fetch_metadata(self, url: str):
         """
+        Fetch metadata on the feed's origin based on the feed url
+        """
+        uri = urlparse(url)
+        uri._replace(path=Path(uri.path).parent.name)
+        new_url = urlunparse(uri)
+        html = BeautifulSoup(requests.get(new_url).content, 'html.parser')
+
+        results = {}
+
+        # add all wanted metadata to the dict
+        results['domain'] = urlparse(url).netloc
+
+        try:
+            favicon = html.find(rel='icon').attrs.get('href', '')
+            if favicon.scheme != 'https' or favicon.scheme != 'http':
+                favicon.scheme = 'http'
+            results['favicon'] = urlunparse(favicon)
+        except:
+            results['favicon'] = ''   # favicon not found
+
+        return results
+
+
+    def to_JSON(self):
+        data = {
+            'type': self.type,
+            'source': self.source,
+            'domain': self.domain,
+            'favicon': self.favicon,
+            'entries': [entry.to_JSON() for entry in self.entries]
+        }
+
+        return data
+
 
 
 class FeedEntry(object):
@@ -48,25 +98,74 @@ class FeedEntry(object):
     the Feed object, this is meant to simplify working with RSS and Atom feeds
     so that there doesn't need to be any special handling based on the type of
     feed you are working with.
+
+    Publish time is stored as Unix seconds (UTC).
     """
 
-    def __init__(self, entry):
+    def __init__(self, entry = None):
 
-        if isinstance(entry, atoma.atom.AtomEntry):
-            self.link = entry.id_
-            self.publish_date = entry.updated.timetuple()
+        if entry is None:
+            raise "Entry cannot be empty"
+        elif isinstance(entry, dict):
+            self.title = entry['title']
+            self.link = entry['link']
+            self.publish_date = entry['publish_date']
+            self.summary = ''
+            self.author = entry['author']
+            self.thumbnail = entry['thumbnail']
+        elif isinstance(entry, atoma.atom.AtomEntry):
             self.title = entry.title.value
+            self.link = entry.id_
+            self.publish_date = timegm(entry.updated.utctimetuple())
+
             if entry.summary is not None:
                 self.summary = strip_html(entry.summary.value)
             elif entry.content is not None:
                 self.summary = strip_html(entry.content.value)
             else:
                 self.summary = ''
+
+            if len(entry.authors) > 0:
+                self.author = {
+                    "name": entry.authors[0].name,
+                    "link": entry.authors[0].uri
+                }
+
+            for link in entry.links:
+                if link.type_ is not None and "image" in link.type_:
+                    self.thumbnail = link.href
+                    break
         elif isinstance(entry, atoma.rss.RSSItem):
-            self.link = entry.link
-            self.publish_date = entry.pub_date.timetuple()
             self.title = entry.title
-            self.summary = strip_html(entry.description)
+            self.link = entry.link
+            self.publish_date = timegm(entry.pub_date.utctimetuple())
+
+            if entry.description is not None:
+                self.summary = strip_html(entry.description)
+            elif entry.content_encoded is not None:
+                self.summary = strip_html(entry.content_encoded)
+            else:
+                self.summary = ''
+
+            self.author = {
+                "name": entry.author,
+                "link": ""
+            }
+
+            self.thumbnail = ''
         else:
             raise('Feed type not supported')
+
+
+    def to_JSON(self):
+        data = {
+            'title': self.title,
+            'link': self.link,
+            'publish_date': self.publish_date,
+            'summary': self.summary,
+            'author': self.author,
+            'thumbnail': self.thumbnail
+        }
+
+        return data
 

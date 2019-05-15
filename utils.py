@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 # builtin modules
 from pathlib import Path
+import re
 
 
 def definePath(path: str):
@@ -24,9 +25,14 @@ def definePath(path: str):
 
 def strip_html(string: str):
     """
-    Use BeautifulSoup to strip out any HTML tags from strings.
+    Use BeautifulSoup and re to strip out any HTML tags and newlines.
     """
-    return BeautifulSoup(string, 'html.parser').get_text()
+    new_str = BeautifulSoup(string, 'html.parser').get_text()  # strip html
+    new_str = re.sub(r"(?<=[\.\!\?\"\)\,])\n(?=\w)", ' ', new_str)
+    # ^remove newlines at the end of sentences
+    new_str = re.sub(r"[\t\ ]{2,}", ' ', new_str)  # condense extra whitespace
+    new_str = new_str.replace('\n', '')  # remove remaining newlines
+    return new_str
 
 
 def truncate(string: str, length: int):
