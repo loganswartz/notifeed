@@ -12,6 +12,7 @@ __status__ = "Production"
 
 # builtin modules
 import argparse
+import logging
 
 # my modules
 from notifeed.utils import definePath
@@ -19,6 +20,26 @@ from notifeed.processor import FeedProcessor
 
 
 def main():
+
+    logging.basicConfig(level=logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logger = logging.getLogger(__name__)
+
+    # create file logging handler
+    #fh = logging.FileHandler('notifeed.log')
+    #fh.setLevel(logging.DEBUG)
+    # create console logging handler
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+
+    #fhformat = logging.Formatter('%(name)s:%(levelname)s: %(message)s')
+    console_format = logging.Formatter('%(message)s')
+    #fh.setFormatter(fhformat)
+    console.setFormatter(console_format)
+    #logger.addHandler(fh)
+    logger.addHandler(console)
+    logger.setLevel(logging.INFO)
 
     # create feed processor and initialize config
     feedProcessor = FeedProcessor()
@@ -100,18 +121,22 @@ def main():
 
     # main loop (parse feeds)
     posts = 0
+    logger.info('Searching for feed updates...')
     for feed in feedProcessor.memory.feeds.keys():
+        logger.info(f"Checking {feed}...")
         newPost = feedProcessor.check_feed(feed)
         if newPost is None:
             continue
+            logger.info('No updates found.')
         else:
             feedProcessor.send_notifications(feed, newPost)
+            logger.info(f"Updates found on \"{feed}\", notification sent.")
             posts += 1
 
     if posts == 0:
-        print('No new posts found.')
+        logger.info('No new posts found.')
     else:
-        print(f"{posts} new posts found.")
+        logger.info(f"{posts} new posts found.")
 
     feedProcessor.save()
     exit(0)

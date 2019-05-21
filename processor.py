@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from time import mktime, struct_time as Time
 from argparse import Namespace
+import logging
 
 # 3rd party modules
 from atoma import parse_rss_bytes, parse_atom_bytes
@@ -83,31 +84,37 @@ class FeedProcessor(object):
     """
 
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
         self.memory = Memory()
 
 
     def load(self, path: Path = definePath(config_path)):
         """Wrapper for Memory.load_config()"""
         self.memory.load_config(path)
+        self.logger.debug('Memory config loaded.')
 
 
     def save(self, path: Path = definePath(config_path)):
         """Wrapper for Memory.save_config()"""
         self.memory.save_config(path)
+        self.logger.debug('Memory config saved.')
 
 
     def fetch_feed(self, url: str):
-        return Feed(url, fetch_raw_feed(url))
+        return Feed(url, self.fetch_raw_feed(url))
 
 
     def fetch_raw_feed(self, url: str):
         """
         Fetch a new copy of a remote RSS/Atom feed for parsing by check_feed()
         """
+        self.logger.info(f"Fetching feed from {url}...")
         try:
             feed = parse_atom_bytes(requests.get(url).content)
         except:
             feed = parse_rss_bytes(requests.get(url).content)
+        self.logger.info('Feed retrieved.')
         return feed
 
 
@@ -117,14 +124,16 @@ class FeedProcessor(object):
         last fetch request, and determine if the feed has changed. Returns the
         latest feed item if a new one is found, otherwise returns none.
         """
+        self.logger.info(f"Checking {name} for updates...")
+
         # fetch newer version of feed
-        feed_url = self.memory.feeds[name]['source']
+        feed_url = self.memory.feeds[name].source
         fresh_feed = self.fetch_feed(feed_url)
 
         fetched_title = fresh_feed.entries[0].title
         fetched_time = fresh_feed.entries[0].publish_date
-        stored_title = self.memory.feeds[name]['entries'][0]['title']
-        stored_time = self.memory.feeds[name]['entries'][0]['publish_date']
+        stored_title = self.memory.feeds[name].entries[0].title
+        stored_time = self.memory.feeds[name].entries[0].publish_date
 
         # following line for eventually comparing latest post dates
         if fetched_time > stored_time or fetched_title != stored_title:
@@ -138,7 +147,8 @@ class FeedProcessor(object):
         """
         Update the 'latest post' data of a feed.
         """
-        self.memory.feeds[name]['entries'][0] = feed
+        self.logger.info(f"Updating {name} with new entry.")
+        self.memory.feeds[name].entries[0] = feed
 
 
     def create_feed(self, name: str, url: str):
@@ -148,6 +158,7 @@ class FeedProcessor(object):
         feed.
         """
         self.memory.feeds[name] = Feed(url)
+        self.logger.info("\"{name}\" feed created.")
 
 
     def destroy_feed(self, name: str):
@@ -155,6 +166,7 @@ class FeedProcessor(object):
         Destroy a previously-added feed.
         """
         del self.memory.feeds[name]
+        self.logger.info(f"\"{name}\" feed destroyed.")
 
 
     def list_feed(self):
@@ -178,6 +190,7 @@ class FeedProcessor(object):
                 "type": type,
                 "data": data
                 }
+        self.logger.info(f"\"{name}\" notification endpoint created.")
 
 
     def destroy_noti(self, name: str):
@@ -193,6 +206,7 @@ class FeedProcessor(object):
         # remove all existing feed assignments from that notification source
         for feed in self.memory.feeds.values():
             feed['notifications'].remove(name)
+        self.logger.info(f"\"{name}\" notification endpoint destroyed.")
 
 
     def add_noti(self, noti: str, feed: str):
@@ -203,6 +217,8 @@ class FeedProcessor(object):
             self.memory.config['global_notifications'].append(noti)
         else:
             self.memory.feeds[feed]['notifications'].append(noti)
+        self.logger.info((f"Notifications for new entries on \"{feed}\" will "
+            f"now be sent to {noti}"))
 
 
     def rm_noti(self, noti: str, feed: str):
@@ -213,6 +229,8 @@ class FeedProcessor(object):
             self.memory.config['global_notifications'].remove(noti)
         else:
             self.memory.feeds[feed]['notifications'].remove(noti)
+        self.logger.info((f"Notifications for {feed} will no longer be sent to"
+            f" {noti}"))
 
 
     def test_noti(self, noti: str, feed: str):
@@ -222,6 +240,7 @@ class FeedProcessor(object):
         """
         post = self.memory.feeds[feed].fetch_feed().entries[0]
         self.notify(noti, feed, post)
+        self.logger.info(f"Test notification sent to {noti}.")
 
 
     def list_noti(self):

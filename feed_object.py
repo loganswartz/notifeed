@@ -111,7 +111,16 @@ class FeedEntry(object):
             self.link = entry['link']
             self.publish_date = entry['publish_date']
             self.summary = ''
-            self.author = entry['author']
+            if entry['author'] is not None:
+                self.author = {
+                    "name": entry['author'],
+                    "link": ""
+                }
+            else:
+                self.author = {
+                    "name": '',
+                    "link": ''
+                }
             self.thumbnail = entry['thumbnail']
         elif isinstance(entry, atoma.atom.AtomEntry):
             self.title = entry.title.value
@@ -129,6 +138,11 @@ class FeedEntry(object):
                 self.author = {
                     "name": entry.authors[0].name,
                     "link": entry.authors[0].uri
+                }
+            else:
+                self.author = {
+                    "name": '',
+                    "link": ''
                 }
 
             for link in entry.links:
