@@ -31,8 +31,10 @@ class Feed(object):
             self.summary = ''
             self.favicon = feed['favicon']
             self.entries = [FeedEntry(entry) for entry in feed['entries']]
+            self.notifications = feed['notifications']
         else:
             self.entries = []
+            self.notifications = []
 
             if isinstance(feed, atoma.atom.AtomFeed):
                 self.type = 'atom'
@@ -85,7 +87,8 @@ class Feed(object):
             'source': self.source,
             'domain': self.domain,
             'favicon': self.favicon,
-            'entries': [entry.to_JSON() for entry in self.entries]
+            'entries': [entry.to_JSON() for entry in self.entries],
+            'notifications': self.notifications
         }
 
         return data
@@ -113,8 +116,8 @@ class FeedEntry(object):
             self.summary = ''
             if entry['author'] is not None:
                 self.author = {
-                    "name": entry['author'],
-                    "link": ""
+                    "name": entry['author']['name'],
+                    "link": entry['author']['link']
                 }
             else:
                 self.author = {

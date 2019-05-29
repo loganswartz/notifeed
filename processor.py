@@ -65,7 +65,7 @@ class Memory(object):
                 'domain': feed.domain,
                 'favicon': feed.favicon,
                 'entries': [feed.entries[0].to_JSON()],
-                'notifications': []
+                'notifications': feed.notifications
             }
             # delete summary field because it's unnecessary
             del config_json['feeds'][name]['entries'][0]['summary']
@@ -216,7 +216,7 @@ class FeedProcessor(object):
         if feed == "global":
             self.memory.config['global_notifications'].append(noti)
         else:
-            self.memory.feeds[feed]['notifications'].append(noti)
+            self.memory.feeds[feed].notifications.append(noti)
         self.logger.info((f"Notifications for new entries on \"{feed}\" will "
             f"now be sent to {noti}"))
 
@@ -228,7 +228,7 @@ class FeedProcessor(object):
         if feed == "global":
             self.memory.config['global_notifications'].remove(noti)
         else:
-            self.memory.feeds[feed]['notifications'].remove(noti)
+            self.memory.feeds[feed].notifications.remove(noti)
         self.logger.info((f"Notifications for {feed} will no longer be sent to"
             f" {noti}"))
 
@@ -295,7 +295,7 @@ class FeedProcessor(object):
         notifications.
         """
         global_list = self.memory.config['global_notifications']
-        local_list = self.memory.feeds[feed]['notifications']
+        local_list = self.memory.feeds[feed].notifications
 
         # combine lists via union
         endpoints = union(global_list, local_list)
