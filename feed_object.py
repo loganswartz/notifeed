@@ -28,7 +28,6 @@ class Feed(object):
             self.type = feed['type']
             self.source = feed['source']
             self.domain = feed['domain']
-            self.summary = ''
             self.favicon = feed['favicon']
             self.entries = [FeedEntry(entry) for entry in feed['entries']]
             self.notifications = feed['notifications']
@@ -76,7 +75,7 @@ class Feed(object):
                 favicon.scheme = 'http'
             results['favicon'] = urlunparse(favicon)
         except:
-            results['favicon'] = ''   # favicon not found
+            results['favicon'] = ""   # favicon not found
 
         return results
 
@@ -114,39 +113,28 @@ class FeedEntry(object):
             self.link = entry['link']
             self.publish_date = entry['publish_date']
             self.summary = ''
-            if entry['author'] is not None:
-                self.author = {
-                    "name": entry['author']['name'],
-                    "link": entry['author']['link']
-                }
-            else:
-                self.author = {
-                    "name": '',
-                    "link": ''
-                }
-            self.thumbnail = entry['thumbnail']
+            self.author = {
+                "name": entry['author']['name'] or "",
+                "link": entry['author']['link'] or ""
+            }
+            self.thumbnail = entry.get('thumbnail', '')
         elif isinstance(entry, atoma.atom.AtomEntry):
             self.title = entry.title.value
             self.link = entry.id_
             self.publish_date = timegm(entry.updated.utctimetuple())
 
-            if entry.summary is not None:
-                self.summary = strip_html(entry.summary.value)
-            elif entry.content is not None:
-                self.summary = strip_html(entry.content.value)
-            else:
-                self.summary = ''
+            # try to get description, if that fails, try content_encoded, if
+            # even that fails, default to empty string
+            try:
+                self.summary = (strip_html(entry.summary.value) or
+                                strip_html(entry.content.value) or "")
 
-            if len(entry.authors) > 0:
                 self.author = {
-                    "name": entry.authors[0].name,
-                    "link": entry.authors[0].uri
+                    "name": entry.authors[0].name or "",
+                    "link": entry.authors[0].uri or ""
                 }
-            else:
-                self.author = {
-                    "name": '',
-                    "link": ''
-                }
+            except Exception:
+                pass
 
             for link in entry.links:
                 if link.type_ is not None and "image" in link.type_:
@@ -157,15 +145,16 @@ class FeedEntry(object):
             self.link = entry.link
             self.publish_date = timegm(entry.pub_date.utctimetuple())
 
-            if entry.description is not None:
-                self.summary = strip_html(entry.description)
-            elif entry.content_encoded is not None:
-                self.summary = strip_html(entry.content_encoded)
-            else:
-                self.summary = ''
+            # try to get description, if that fails, try content_encoded, if
+            # even that fails, default to empty string
+            try:
+                self.summary = (strip_html(entry.description) or
+                                strip_html(entry.content_encoded) or "")
+            except Exception:
+                pass
 
             self.author = {
-                "name": entry.author,
+                "name": entry.author or "",
                 "link": ""
             }
 
@@ -179,10 +168,13 @@ class FeedEntry(object):
             'title': self.title,
             'link': self.link,
             'publish_date': self.publish_date,
-            'summary': self.summary,
-            'author': self.author,
-            'thumbnail': self.thumbnail
         }
+        try:
+            data['summary'] = self.summary or ""
+            data['author'] = self.author or {"name":"", "link":""}
+            data['thumbnail'] = self.thumbnail or ""
+        except Exception:
+            pass
 
         return data
 

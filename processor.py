@@ -157,8 +157,8 @@ class FeedProcessor(object):
         (only for use by the user), and url is the URL of the actual RSS/Atom
         feed.
         """
-        self.memory.feeds[name] = Feed(url)
-        self.logger.info("\"{name}\" feed created.")
+        self.memory.feeds[name] = self.fetch_feed(url)
+        self.logger.info(f"\"{name}\" feed created.")
 
 
     def destroy_feed(self, name: str):
