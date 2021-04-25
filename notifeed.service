@@ -1,0 +1,11 @@
+[Unit]
+Description=Notifeed
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+ExecStart=/usr/bin/python3 -u -m notifeed run
+
+[Install]
+WantedBy=multi-user.target

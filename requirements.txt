@@ -1,0 +1,3 @@
+atoma
+bs4
+requests

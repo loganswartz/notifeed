@@ -1,19 +1,63 @@
 # notifeed
-Simple daemon to regularly parse RSS/Atom feeds and send push notifications/webhooks when new content is detected.
+Automatically get notifications for new posts on your favorite RSS/Atom feeds.
 
-## How to Use
-* Clone the repo locally to your machine
-* Add the repo to your python path (or move it into your path)
-* (Optional) Change the default config location by changing the `config_path` variable in \_\_init\_\_.py (currently defaults to `~/.notifeed`)
-* Use the helper functions to configure notifeed:
+## Usage
+```bash
+~/notifeed $ python3 -m notifeed -h  # for brevity, referred to as just `notifeed` from now on
+Usage: notifeed [OPTIONS] COMMAND [ARGS]...
 
-Function Call | Purpose
---------------|--------------
-`python3 notifeed -h` or `python3 notifeed <feed\|notification> -h` or etc | See help messages and cmdline arguments on all the available commands. Help message changes depending on the options specified in conjunction with the `-h` flag.
-`python3 notifeed feed <create\|destroy> -n NAME (-u URL)` | Create or remove feeds from notifeed
-`python3 notifeed notification <create\|destroy> -n NAME (-t TYPE -d DATA)` | Create or destroy notifications from notifeed. `create` requires the 2 additional arguments in parentheses whereas destroy only needs the name. `-t TYPE` is the type of the notification endpoint (currently only 'slack' is supported), and `-d DATA` is data associated with that notification type (for slack, it's your [webhook](https://api.slack.com/incoming-webhooks) URL)
-`python3 notifeed notification <add\|rm> -n NOTIFICATION -f FEED` | assign or remove a notification endpoint to/from a feed. Use `-f 'global'` to assign/remove a notification from all feeds.
-`python3 notifeed notification test -n NOTIFICATION -f FEED` | Test a notification source, using the most recent post from the given feed.
-`python3 notifeed` | Parse all configured feeds, check for new posts, and send the appropriate notifications.
+Options:
+  -h, --help  Show this message and exit.
 
-* Configure a cronjob to run `python3 notifeed` at your desired refresh interval (~15 or 30 minutes would probably be the lowest I'd go)
+Commands:
+  add
+  delete
+  list
+  run
+```
+Notifeed has 3 main things that need to be configured:
+* Feeds to watch
+* Available notification channels
+* The actual configured notifications (i.e. on a new post to X, send a notification to Y)
+
+To configure these values, you can use `notifeed add <feed|channel|notification> ...`.
+Here are some examples on how to use them:
+
+### Add a new feed
+```bash
+$ notifeed add feed Dolphin https://dolphin-emu.org/blog/feeds/
+$ notifeed add feed MelonDS http://melonds.kuribo64.net/rss.php
+```
+
+### Add a new channel
+```bash
+$ notifeed add channel --type slack MySlackWorkspace <Slack Webhook URL>
+```
+
+### Add a new notification
+```bash
+$ notifeed add notification Dolphin MySlackWorkspace
+```
+
+Notifeed will start listening for new posts when you start it via `notifeed run`.
+The best way to deploy this is setting it up as a systemctl service, using the
+provided template service file.
+
+# Misc
+Configuration data is stored in an SQLite database file in the root of the project
+folder. The default polling interval is 15 minutes, although this can be changed by
+changing the value in the DB.
+
+## Installation
+Install the service file by symbolically linking to it from `/etc/systemd/system/`:
+```bash
+$ sudo ln -s /path/to/notifeed/notifeed.service /etc/systemd/system/notifeed.service
+```
+Then, reload the service daemon, and start the service:
+```bash
+$ sudo systemctl daemon-reload && sudo systemctl start notifeed
+```
+You'll probably also want to start the service automatically on startup:
+```bash
+$ sudo systemctl enable notifeed
+```

@@ -117,3 +117,7 @@ dmypy.json
 
 # vim .swp files
 *.swp
+
+# local db
+notifeed.db
+/notifeed/notifications/plugins/

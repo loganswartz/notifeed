@@ -1,2 +1,0 @@
-
-config_path = '~/.notifeed'
