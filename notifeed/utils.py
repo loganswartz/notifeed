@@ -33,7 +33,7 @@ def condense(text: str) -> str:
     return "\n\n".join(filled)
 
 
-T = TypeVar('T', bound=Type)
+T = TypeVar("T", bound=Type)
 
 
 def import_subclasses(

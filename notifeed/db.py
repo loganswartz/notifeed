@@ -6,13 +6,13 @@ import hashlib
 from notifeed.notifications import NotificationChannel
 import pathlib
 import sqlite3
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
 # 3rd party
 from atoma.exceptions import FeedXMLError
 
 # local modules
-from notifeed.feeds import Feed
+from notifeed.feeds import Feed, FeedAsync, FeedAutoload, Post
 
 # }}}
 
@@ -125,6 +125,7 @@ class NotifeedDatabase(Database):
             print(f"DB initialized at {location}.")
 
     Seconds = int
+
     def get_poll_interval(self) -> Seconds:
         DEFAULT = 15 * 60  # seconds
         interval = next(
@@ -139,12 +140,12 @@ class NotifeedDatabase(Database):
         else:
             return int(interval["value"])
 
-    def get_feeds(self):
+    def get_feeds(self, session=None):
         get = "SELECT * FROM feeds"
         feeds = []
         for url, name in self.query(get):
             try:
-                feeds.append(Feed(url, name))
+                feeds.append(FeedAsync(url, name, session))
             except FeedXMLError:
                 print(f"Failed to parse feed for {name}.")
                 continue
@@ -159,7 +160,10 @@ class NotifeedDatabase(Database):
 
     def get_notification_channels(self):
         get = "SELECT * FROM notification_channels"
-        channels = {name.casefold(): cls for name, cls in NotificationChannel.get_subclasses().items()}
+        channels = {
+            name.casefold(): cls
+            for name, cls in NotificationChannel.get_subclasses().items()
+        }
         return {
             item["name"]: channels[item["type"].casefold()](
                 item["name"], item["endpoint"], item["authentication"]
@@ -200,8 +204,8 @@ class NotifeedDatabase(Database):
         url = next(results)["url"]
         return self.query(add, channel=channel, feed=url)
 
-    def check_latest_post(self, feed: Feed):
-        feed.refresh()
+    async def check_latest_post(self, feed: FeedAsync):
+        await feed.load()
         latest = feed.posts[0]
 
         identifier = hashlib.sha256(latest.content.encode()).hexdigest()
@@ -210,7 +214,7 @@ class NotifeedDatabase(Database):
 
         if current is not None and current["content_hash"] == identifier:
             # nothing new
-            return False
+            return None
 
         insert = """
             INSERT OR REPLACE INTO posts (feed, content_hash, url, title)

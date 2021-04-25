@@ -28,7 +28,7 @@ class Slack(NotificationChannel):
 
         def context_element(post: Post):
             author = next(iter(post.authors), None)
-            pubdate = time.strftime('%B %d %Y', post.publish_date)
+            pubdate = time.strftime("%B %d %Y", post.publish_date)
 
             element = {
                 "type": "context",
@@ -37,7 +37,7 @@ class Slack(NotificationChannel):
                         "type": "mrkdwn",
                         "text": f"By {author} — {pubdate}" if author else pubdate,
                     }
-                ]
+                ],
             }
 
             return [element] if post.publish_date else []
@@ -47,7 +47,10 @@ class Slack(NotificationChannel):
             "blocks": [
                 {
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": "New post from Dolphin!"},
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"New post from {post.feed.name}!",
+                    },
                 },
                 {"type": "divider"},
                 {
@@ -58,22 +61,8 @@ class Slack(NotificationChannel):
                     },
                     **thumbnail_element(post),
                 },
-                *context_element(post)
-            ]
+                *context_element(post),
+            ],
         }
-        # "attachments": [
-        #     {
-        #         "fallback": f"New post from {post.feed.name}: {post.title}",
-        #         "pretext": f"New <{post.link}|post> from {post.feed.name}:",
-        #         "color": "good",
-        #         "fields": [
-        #             {
-        #                 "title": post.title,
-        #                 "value": post.summary,
-        #                 "short": False,
-        #             }
-        #         ],
-        #     }
-        # ]
 
         return data

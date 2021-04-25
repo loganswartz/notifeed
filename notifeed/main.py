@@ -5,12 +5,16 @@
 import asyncio
 from datetime import datetime
 from typing import Optional
+
+import aiohttp
+from atoma.exceptions import FeedXMLError
 from notifeed.notifications import NotificationChannel
 import pathlib
 import sys
 
 # 3rd party
 import click
+from aiohttp import ClientSession
 
 # local modules
 from notifeed.db import NotifeedDatabase
@@ -37,30 +41,33 @@ def main():
         print(f"=== Check initiated at {datetime.now()} ===")
         db = NotifeedDatabase(DB_LOCATION)
         poll_interval = db.get_poll_interval()
-        feeds = db.get_feeds()
 
         found = []
-        for feed in feeds:
-        # async with ClientSession() as session:
-        #     tasks = [db.check_latest_post(feed, session) for feed in feeds]
-        #     await asyncio.gather(*tasks)
-            new = db.check_latest_post(feed)
-            if new:
-                found.append(new)
-                print(f'There\'s a new {feed.name} post: "{new.title}"!')
+        async with ClientSession() as session:
+            feeds = db.get_feeds(session)
+            tasks = [db.check_latest_post(feed) for feed in feeds]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # asyncio.gather returns results in submission order
+            for feed, result in zip(feeds, results):
+                if isinstance(result, FeedXMLError):
+                    print(f"Error encountered on {feed.name}: {result}")
+                elif result is not None:
+                    found.append(result)
+                    print(f'There\'s a new {result.feed.name} post: "{result.title}"!')
 
         if found:
-            for post in found:
+            for result in found:
                 notifications_query = """
                     SELECT * FROM notifications
                         LEFT JOIN feeds ON feeds.url = notifications.feed
                     WHERE feeds.url = :feed
                 """
-                notifications = db.query(notifications_query, feed=post.feed.url)
+                notifications = db.query(notifications_query, feed=result.feed.url)
                 channels = db.get_notification_channels()
                 for notification in notifications:
                     channel = channels[notification["channel"]]
-                    channel.notify(post)
+                    channel.notify(result)
         else:
             print("No new posts found.")
 

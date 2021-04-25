@@ -6,6 +6,7 @@ import textwrap
 from typing import Union
 import operator
 from urllib.parse import urlparse
+import aiohttp
 
 # 3rd party
 from atoma import parse_rss_bytes, parse_atom_bytes
@@ -24,25 +25,31 @@ class Feed(object):
     Simple interface to either an Atom or RSS feed.
     """
 
-    def __init__(self, url: str, name: str):
+    def __init__(self, url: str, name: str, session=None, brotli_supported=False):
         """
         Fetch a new copy of a remote RSS/Atom feed for parsing by check_feed()
         """
         self.url = url
         self.name = name
         self._raw = None
+        self.session = session
+        self.brotli_supported = brotli_supported
 
     @property
     def _feed(self):
         """
         Lazy load the actual feed.
         """
-        if self._raw is None:
-            self._raw = self._fetch()
+        if not self._raw:
+            raise RuntimeError(
+                "You need to call the load() method first to actually fetch the feed."
+            )
         return self._raw
 
-    def refresh(self):
-        self._raw = self._fetch()
+    def load(self):
+        self._raw = self.fetch()
+
+    refresh = load
 
     @property
     def fetch_headers(self):
@@ -55,7 +62,9 @@ class Feed(object):
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.62 Safari/537.36",
             "Upgrade-Insecure-Requests": "1",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate",  # if you're sure brotli is supported, you can add ", br" here
+            "Accept-Encoding": "gzip, deflate" + ", br"
+            if self.brotli_supported
+            else "",
             "Accept-Language": "en-US,en;q=0.9",
             "Connection": "keep-alive",
             "Referer": "http://www.google.com/",
@@ -63,8 +72,9 @@ class Feed(object):
         }
         return headers
 
-    def _fetch(self):
-        resp = requests.get(self.url, headers=self.fetch_headers)
+    def fetch(self):
+        get = self.session.get if self.session is not None else requests.get
+        resp = get(self.url, headers=self.fetch_headers)
         try:
             return parse_atom_bytes(resp.content)
         except:
@@ -83,18 +93,45 @@ class Feed(object):
 
     entries = posts
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(name={repr(self.name)}, url={repr(self.url)})"
+        )
+
+
+class FeedAutoload(Feed):
+    @property
+    def _feed(self):
+        """
+        Lazy load the actual feed.
+        """
+        if self._raw is None:
+            self.load()
+        return self._raw
+
 
 class FeedAsync(Feed):
-    async def _fetch(self, session):
-        async with session.get(self.url, headers=self.fetch_headers) as response:
-            content = await response.content
+    session: aiohttp.ClientSession
+
+    def __init__(
+        self,
+        url: str,
+        name: str,
+        session: aiohttp.ClientSession,
+        brotli_supported=False,
+    ):
+        super().__init__(url, name, session, brotli_supported)
+
+    async def fetch(self):
+        async with self.session.get(self.url, headers=self.fetch_headers) as response:
+            content = await response.read()
             try:
                 return parse_atom_bytes(content)
             except:
                 return parse_rss_bytes(content)
 
-    async def refresh(self, session):
-        self._raw = await self._fetch(session)
+    async def load(self):
+        self._raw = await self.fetch()
 
 
 class Post(object):
@@ -165,9 +202,9 @@ class Post(object):
     @property
     def authors(self):
         if self.feed.type == "atom":
-            return [author.name for author in getattr(self.raw, 'authors', [])]
+            return [author.name for author in getattr(self.raw, "authors", [])]
         else:
-            author = getattr(self.raw, 'author', None)
+            author = getattr(self.raw, "author", None)
             return [author] if author else []
 
     @property
@@ -177,4 +214,7 @@ class Post(object):
         except AttributeError:
             return []
 
-        return [link.href for link in links if link.type_ and 'image' in link.type_]
+        return [link.href for link in links if link.type_ and "image" in link.type_]
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({repr(self.title)})"
