@@ -167,7 +167,7 @@ class Post(object):
 
     @property
     def publish_date(self):
-        return self._get("publish_date").timetuple()
+        return self._get("publish_date")
 
     @property
     def raw_content(self):
@@ -190,7 +190,7 @@ class Post(object):
         summary = ""
 
         if isinstance(self.raw, AtomEntry):
-            item = self.raw.summary if self.raw.summary.value else self.raw.content
+            item = self.raw.summary if getattr(self.raw.summary, 'value', None) else self.raw.content
             summary = item.value
         elif isinstance(self.raw, RSSItem):
             summary = self.raw.description

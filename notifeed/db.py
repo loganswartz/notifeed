@@ -3,18 +3,23 @@
 # Imports {{{
 # builtins
 import hashlib
-from notifeed.notifications import NotificationChannel
+import logging
 import pathlib
 import sqlite3
-from typing import Literal, Optional, Union
+from typing import Dict, List, Optional, Union
 
 # 3rd party
 from atoma.exceptions import FeedXMLError
+import aiohttp
 
 # local modules
-from notifeed.feeds import Feed, FeedAsync, FeedAutoload, Post
+from notifeed.feeds import FeedAsync
+from notifeed.notifications import NotificationChannel, NotificationChannelAsync
 
 # }}}
+
+
+log = logging.getLogger(__name__)
 
 
 class Database(object):
@@ -26,6 +31,8 @@ class Database(object):
         try:
             connection = sqlite3.connect(str(self.location))
             connection.row_factory = sqlite3.Row
+            with connection:
+                connection.execute("PRAGMA foreign_keys=ON")
         except sqlite3.Error as e:
             raise Exception(f"Database connection failed: {e}") from None
 
@@ -122,7 +129,7 @@ class NotifeedDatabase(Database):
             # set default
             self.get_poll_interval()
 
-            print(f"DB initialized at {location}.")
+            log.info(f"DB initialized at {location}.")
 
     Seconds = int
 
@@ -132,22 +139,27 @@ class NotifeedDatabase(Database):
             self.query("SELECT value FROM settings WHERE name = 'poll_interval'"), None
         )
         if interval is None:
-            self.query(
-                "INSERT INTO settings (name, value) VALUES ('poll_interval', :interval)",
-                interval=DEFAULT,
-            )
+            self.set_setting('poll_interval', DEFAULT)
             return DEFAULT
         else:
             return int(interval["value"])
 
-    def get_feeds(self, session=None):
+    def get_settings(self) -> Dict[str, str]:
+        get = "SELECT * FROM settings";
+        return {row['name']: row['value'] for row in self.query(get)}
+
+    def set_setting(self, key, value):
+        set_value = "INSERT OR REPLACE INTO settings (name, value) VALUES (:key, :value)"
+        return self.query(set_value, key=key, value=value)
+
+    def get_feeds(self, session=None) -> List[FeedAsync]:
         get = "SELECT * FROM feeds"
         feeds = []
         for url, name in self.query(get):
             try:
                 feeds.append(FeedAsync(url, name, session))
             except FeedXMLError:
-                print(f"Failed to parse feed for {name}.")
+                log.error(f"Failed to parse feed for {name}.")
                 continue
         return feeds
 
@@ -158,15 +170,30 @@ class NotifeedDatabase(Database):
     def delete_feed(self, url: str):
         return self.query("DELETE FROM feeds WHERE url = :url", url=url)
 
-    def get_notification_channels(self):
+    def delete_notification_channel(self, name: str):
+        add = "DELETE FROM notification_channels WHERE name = :name"
+        return self.query(add, name=name)
+
+    def delete_notification(self, feed: str, channel: str):
+        find = """
+            DELETE FROM notifications
+            WHERE id IN (
+                SELECT id FROM notifications
+                LEFT JOIN feeds ON feeds.url = notifications.feed
+                WHERE feeds.name = :feed AND notifications.channel = :channel
+            )
+        """
+        return self.query(find, feed=feed, channel=channel)
+
+    def get_notification_channels(self, session: aiohttp.ClientSession) -> Dict[str, NotificationChannelAsync]:
         get = "SELECT * FROM notification_channels"
         channels = {
             name.casefold(): cls
-            for name, cls in NotificationChannel.get_subclasses().items()
+            for name, cls in NotificationChannelAsync.get_subclasses().items()
         }
         return {
             item["name"]: channels[item["type"].casefold()](
-                item["name"], item["endpoint"], item["authentication"]
+                item["name"], item["endpoint"], session, item["authentication"]
             )
             for item in self.query(get)
         }
@@ -190,19 +217,15 @@ class NotifeedDatabase(Database):
             add, endpoint=endpoint, type=type, authentication=authentication, name=name
         )
 
-    def delete_notification_channel(self, name: str):
-        add = "DELETE FROM notification_channels WHERE name = :name"
-        return self.query(add, name=name)
-
     def get_notifications(self):
         get = "SELECT * FROM notifications"
         return self.query(get)
 
-    def add_notification(self, channel: str, feed: str):
+    def add_notification(self, feed: str, channel: str):
         add = "INSERT INTO notifications (channel, feed) VALUES (:channel, :feed)"
         results = self.query("SELECT url FROM feeds WHERE name = :name", name=feed)
         url = next(results)["url"]
-        return self.query(add, channel=channel, feed=url)
+        return self.query(add, feed=url, channel=channel)
 
     async def check_latest_post(self, feed: FeedAsync):
         await feed.load()

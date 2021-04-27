@@ -1,3 +1,5 @@
+aiohttp[speedups]
 atoma
 bs4
+click
 requests

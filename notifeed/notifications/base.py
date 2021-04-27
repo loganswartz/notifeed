@@ -3,11 +3,12 @@
 # Imports {{{
 # builtins
 import inspect
-from typing import Dict, Optional, Literal, Type
+from typing import Optional, Literal
 import pathlib
 
 # 3rd party
 import requests
+import aiohttp
 
 # local modules
 from notifeed.feeds import Post
@@ -21,11 +22,13 @@ class NotificationChannel(object):
         self,
         name: str,
         endpoint: str,
+        session: requests.Session = None,
         authentication: Optional[str] = None,
     ):
-        self.endpoint = endpoint
-        self.authentication = authentication
         self.name = name
+        self.endpoint = endpoint
+        self.session = session
+        self.authentication = authentication
 
     def notify(self, post: Post):
         """
@@ -60,8 +63,9 @@ class NotificationChannel(object):
 
         headers = {**base, **headers}
 
-        resp = requests.request(method, url, json=json, headers=headers)
-        return resp.ok
+        fetch = self.session.request or requests.request
+        resp = fetch(method, url, json=json, headers=headers)
+        return resp.status_code == 200
 
     def build(self, post: Post):
 
@@ -79,3 +83,39 @@ class NotificationChannel(object):
         )
 
         return import_subclasses(cls, __package__, plugins)
+
+
+class NotificationChannelAsync(NotificationChannel):
+    def __init__(
+        self,
+        name: str,
+        endpoint: str,
+        session: aiohttp.ClientSession,
+        authentication: Optional[str] = None,
+    ):
+        self.endpoint = endpoint
+        self.authentication = authentication
+        self.name = name
+        self.session = session
+
+    async def notify(self, post: Post):
+        return await self.send_webhook(
+            self.endpoint, json=self.build(post), auth_bearer=self.authentication
+        )
+
+    async def send_webhook(
+        self,
+        url: str,
+        json: dict,
+        headers: dict = {},
+        auth_bearer: Optional[str] = None,
+        method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "POST",
+    ):
+        base = {}
+        if auth_bearer is not None:
+            base = {"Authorization": f"Bearer: {auth_bearer}"}
+
+        headers = {**base, **headers}
+
+        resp = await self.session.request(method, url, json=json, headers=headers)
+        return resp

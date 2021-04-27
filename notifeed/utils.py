@@ -2,12 +2,21 @@
 
 # Imports {{{
 # builtins
+from collections import defaultdict
 from importlib import import_module
 import inspect
 import pathlib
 import re
 import textwrap
-from typing import Dict, Type, TypeVar
+from traceback import format_exception
+from typing import (
+    Callable,
+    Iterable,
+    Dict,
+    List,
+    Type,
+    TypeVar,
+)
 
 # 3rd party
 from bs4 import BeautifulSoup
@@ -70,3 +79,23 @@ def import_subclasses(
         for name, obj in module.__dict__.items()
         if is_subclass(obj, cls)
     }
+
+
+Item = TypeVar("Item")
+Result = TypeVar("Result")
+
+
+def partition(
+    items: Iterable[Item], test: Callable[[Item], Result]
+) -> Dict[Result, List[Item]]:
+    partitions: Dict[Result, List[Item]] = defaultdict(list)
+
+    for item in items:
+        partitions[test(item)].append(item)
+
+    return partitions
+
+
+def get_traceback(exception: Exception):
+    msg = format_exception(type(exception), exception, exception.__traceback__)
+    return ''.join(msg).strip()

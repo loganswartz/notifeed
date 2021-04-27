@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 
 # Imports {{{
-# builtins
-import time
-
 # local modules
-from notifeed.notifications import NotificationChannel
+from notifeed.notifications import NotificationChannelAsync
 from notifeed.feeds import Post
 
 # }}}
 
 
-class Slack(NotificationChannel):
+class Slack(NotificationChannelAsync):
     def build(self, post: Post):
         def thumbnail_element(post: Post):
             thumbnail = {}
@@ -28,7 +25,7 @@ class Slack(NotificationChannel):
 
         def context_element(post: Post):
             author = next(iter(post.authors), None)
-            pubdate = time.strftime("%B %d %Y", post.publish_date)
+            pubdate = post.publish_date.strftime("%B %d %Y")
 
             element = {
                 "type": "context",
