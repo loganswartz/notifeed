@@ -225,7 +225,7 @@ def delete_channel(name):
 @click.argument("channel")
 def delete_notification(feed, channel):
     db = NotifeedDatabase(DB_LOCATION)
-    with Reporter(f"Deleted notification on {channel} for {feed}!", "Failed to delete notification: {exception}"):
+    with Reporter(f"Disabled notifications on {channel} for {feed}!", "Failed to delete notification: {exception}"):
         db.delete_notification(feed, channel)
 
 

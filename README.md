@@ -27,13 +27,18 @@ Here are some examples on how to use them:
 ### Working with Feeds
 ```bash
 $ notifeed add feed Dolphin https://dolphin-emu.org/blog/feeds/
+Added Dolphin!
 
 $ notifeed add feed MelonDS http://melonds.kuribo64.net/rss.php
+Added MelonDS!
 
 $ notifeed list feeds
+Currently watching:
+  Dolphin (https://dolphin-emu.org/blog/feeds/)
+  MelonDS (http://melonds.kuribo64.net/rss.php)
 
 $ notifeed delete feed Dolphin
-
+Deleted Dolphin!
 ```
 
 ### Working with Channels
@@ -55,11 +60,14 @@ Available notification channels:
 ### Working with Notifications
 ```bash
 $ notifeed add notification Dolphin MySlackWorkspace
+Added notification for new posts to Dolphin!
 
 $ notifeed list notifications
+Configured notifications:
+  New posts to Dolphin --> MySlackWorkspace
 
 $ notifeed delete notification Dolphin MySlackWorkspace
-
+Disabled notifications for Dolphin on MySlackWorkspace
 ```
 
 Notifeed will start listening for new posts when you start it via `notifeed run`.
@@ -75,11 +83,12 @@ The default polling interval is 15 minutes.
 # Available Notification Channels
 - [X] Slack
 - [X] Discord
+- [ ] Email
 
 Currently, Slack and Discord are supported. Other connectors can be added by
-implementing a subclass of the `NotificationChannel` class, specifically the
-`notify` method. `notify` is called with one argument, `post` (which is of type
-`notifeed.Post`), when a new post is found on a feed.  Notifeed will
+implementing a subclass of the `NotificationChannelAsync` class, specifically
+the `notify` method. `notify` is called with one argument, `post` (which is of
+type `notifeed.Post`), when a new post is found on a feed.  Notifeed will
 automatically import any NotificationChannel subclasses found in modules within
 the `notifications` folder of this repo, and the `notifications/plugins` path
 specifically is gitignore'd to allow symlinking your own modules into an
