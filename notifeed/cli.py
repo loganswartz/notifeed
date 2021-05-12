@@ -24,11 +24,18 @@ from notifeed.utils import get_traceback, partition
 # }}}
 
 
-# root of the repo
-DB_LOCATION = pathlib.Path(__file__).resolve().parent.parent / "notifeed.db"
-db = NotifeedDatabase(DB_LOCATION)
-settings = db.get_settings()
-db.close()
+class App(object):
+    _conf = {
+        "db": pathlib.Path(__file__).resolve().parent.parent / "notifeed.db"
+    }
+
+    @staticmethod
+    def get(key):
+        return App._conf[key]
+
+    @staticmethod
+    def set(key, value):
+        App._conf[key] = value
 
 
 # setup logging
@@ -40,8 +47,15 @@ log.addHandler(sh)
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
 @click.option('--debug', is_flag=True)
-def cli(debug):
+@click.option('--db', type=click.Path())
+def cli(debug, db):
     log.setLevel(logging.DEBUG if debug else logging.INFO)
+    if db:
+        App.set('db', pathlib.Path(db))
+
+    db = NotifeedDatabase(App.get('db'))
+    App.set('settings', db.get_settings())
+    db.close()
 
 
 @cli.command()
@@ -55,7 +69,7 @@ def main():
         Check a feed and fire all relevant notifications if a new post is found.
         """
         log.debug(f"Checking {feed}.")
-        db = NotifeedDatabase(DB_LOCATION)
+        db = NotifeedDatabase(App.get('db'))
         try:
             found = await db.check_latest_post(feed)
             log.debug(f"{feed.name} was successfully fetched.")
@@ -89,7 +103,7 @@ def main():
 
     async def poll():
         log.info(f"=== Check initiated at {datetime.now()} ===")
-        db = NotifeedDatabase(DB_LOCATION)
+        db = NotifeedDatabase(App.get('db'))
         poll_interval = db.get_poll_interval()
 
         async with ClientSession() as session:
@@ -115,7 +129,7 @@ def main():
         log.debug(f"Next check occurs at {next_check}.")
         await asyncio.sleep(poll_interval)
 
-    db = NotifeedDatabase(DB_LOCATION)
+    db = NotifeedDatabase(App.get('db'))
     feeds = list(db.query("SELECT * FROM feeds"))
     notifications = list(db.query("SELECT * FROM notifications"))
     settings = {
@@ -165,7 +179,7 @@ def set():
 @click.argument("name")
 @click.argument("url")
 def add_feed(name, url):
-    db = NotifeedDatabase(DB_LOCATION)
+    db = NotifeedDatabase(App.get('db'))
     with Reporter(f"Added {name}!", "Failed to add feed: {exception}"):
         db.add_feed(name, url)
 
@@ -183,7 +197,7 @@ def add_feed(name, url):
     prompt=f"What type of channel is this?",
 )
 def add_channel(name, endpoint, auth_token, type):
-    db = NotifeedDatabase(DB_LOCATION)
+    db = NotifeedDatabase(App.get('db'))
     with Reporter(f"Added {name}!", "Failed to add channel: {exception}"):
         subclass = NotificationChannel.get_subclasses()[type]
         channel = subclass(name, endpoint, auth_token)
@@ -191,21 +205,21 @@ def add_channel(name, endpoint, auth_token, type):
 
 
 @add.command(name="notification")
-@click.argument("feed")
 @click.argument("channel")
-def add_notification(feed, channel):
-    db = NotifeedDatabase(DB_LOCATION)
+@click.argument("feeds", nargs=-1)
+def add_notification(channel, feeds):
+    db = NotifeedDatabase(App.get('db'))
     with Reporter(
-        f"Added notification for new posts to {feed}!",
+        f"Added notification for new posts to {', '.join(feeds)}!",
         "Failed to add notification: {exception}",
     ):
-        db.add_notification(feed, channel)
+        db.add_notifications(channel, feeds)
 
 
 @delete.command(name="feed")
 @click.argument("name")
 def delete_feed(name):
-    db = NotifeedDatabase(DB_LOCATION)
+    db = NotifeedDatabase(App.get('db'))
     feed = next(db.query("SELECT url FROM feeds WHERE name = :name", name=name), None)
     with Reporter(f"Deleted {name}!", "Failed to delete feed: {exception}"):
         if feed is not None:
@@ -215,18 +229,19 @@ def delete_feed(name):
 @delete.command(name="channel")
 @click.argument("name")
 def delete_channel(name):
-    db = NotifeedDatabase(DB_LOCATION)
+    db = NotifeedDatabase(App.get('db'))
     with Reporter(f"Deleted {name}!", "Failed to delete channel: {exception}"):
         db.delete_notification_channel(name)
 
 
 @delete.command(name="notification")
-@click.argument("feed")
 @click.argument("channel")
-def delete_notification(feed, channel):
-    db = NotifeedDatabase(DB_LOCATION)
-    with Reporter(f"Disabled notifications on {channel} for {feed}!", "Failed to delete notification: {exception}"):
-        db.delete_notification(feed, channel)
+@click.argument("feeds", nargs=-1)
+def delete_notification(channel, feeds):
+    db = NotifeedDatabase(App.get('db'))
+    targets = f"{len(feeds)} channel{'s' if len(feeds) > 1 else ''}"
+    with Reporter(f"Disabled notifications on {targets} for {channel}!", "Failed to delete notification: {exception}"):
+        db.delete_notifications(channel, feeds)
 
 
 @show.command(name="feeds")
@@ -263,16 +278,16 @@ def list_notifications():
 
 
 @cli.command(name="set")
-@click.argument("key", type=click.Choice(settings.keys()))
+@click.argument("key", type=click.Choice(['poll_interval']))
 @click.argument("value")
 def set_settings(key, value):
-    db = NotifeedDatabase(DB_LOCATION)
+    db = NotifeedDatabase(App.get('db'))
     with Reporter(f"Set {key} to {value}!", f"Failed to set {key}: {{exception}}"):
         db.set_setting(key, value)
 
 
 def list_items(found_msg: str, not_found_msg: str, line_fmt: str, query: str):
-    db = NotifeedDatabase(DB_LOCATION)
+    db = NotifeedDatabase(App.get('db'))
     results = list(db.query(query))
     if not results:
         log.info(not_found_msg)
@@ -284,7 +299,7 @@ def list_items(found_msg: str, not_found_msg: str, line_fmt: str, query: str):
 
 
 def get_channel_name(channel_url: str):
-    db = NotifeedDatabase(DB_LOCATION)
+    db = NotifeedDatabase(App.get('db'))
     get = "SELECT name FROM notification_channels WHERE url = :url"
     results = db.query(get, url=channel_url)
     return next(results, {}).get('name', None)

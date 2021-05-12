@@ -3,10 +3,11 @@
 # Imports {{{
 # builtins
 import hashlib
+import itertools
 import logging
 import pathlib
 import sqlite3
-from typing import Dict, List, Optional, Union
+from typing import Collection, Dict, List, Optional, Union
 
 # 3rd party
 from atoma.exceptions import FeedXMLError
@@ -57,8 +58,13 @@ class Database(object):
         if cursor is None:
             raise Exception(f"Couldn't get a cursor from the DB connection.")
 
+        if args and kwargs:
+            raise ValueError(
+                "You cannot use both named and positional parameters in a single query"
+            )
+        variables = args if args else kwargs
         with self._connection:
-            results = cursor.execute(sql, kwargs, *args)
+            results = cursor.execute(sql, variables)
 
         return results
 
@@ -139,17 +145,19 @@ class NotifeedDatabase(Database):
             self.query("SELECT value FROM settings WHERE name = 'poll_interval'"), None
         )
         if interval is None:
-            self.set_setting('poll_interval', DEFAULT)
+            self.set_setting("poll_interval", DEFAULT)
             return DEFAULT
         else:
             return int(interval["value"])
 
     def get_settings(self) -> Dict[str, str]:
-        get = "SELECT * FROM settings";
-        return {row['name']: row['value'] for row in self.query(get)}
+        get = "SELECT * FROM settings"
+        return {row["name"]: row["value"] for row in self.query(get)}
 
     def set_setting(self, key, value):
-        set_value = "INSERT OR REPLACE INTO settings (name, value) VALUES (:key, :value)"
+        set_value = (
+            "INSERT OR REPLACE INTO settings (name, value) VALUES (:key, :value)"
+        )
         return self.query(set_value, key=key, value=value)
 
     def get_feeds(self, session=None) -> List[FeedAsync]:
@@ -170,22 +178,9 @@ class NotifeedDatabase(Database):
     def delete_feed(self, url: str):
         return self.query("DELETE FROM feeds WHERE url = :url", url=url)
 
-    def delete_notification_channel(self, name: str):
-        add = "DELETE FROM notification_channels WHERE name = :name"
-        return self.query(add, name=name)
-
-    def delete_notification(self, feed: str, channel: str):
-        find = """
-            DELETE FROM notifications
-            WHERE id IN (
-                SELECT id FROM notifications
-                LEFT JOIN feeds ON feeds.url = notifications.feed
-                WHERE feeds.name = :feed AND notifications.channel = :channel
-            )
-        """
-        return self.query(find, feed=feed, channel=channel)
-
-    def get_notification_channels(self, session: aiohttp.ClientSession) -> Dict[str, NotificationChannelAsync]:
+    def get_notification_channels(
+        self, session: aiohttp.ClientSession
+    ) -> Dict[str, NotificationChannelAsync]:
         get = "SELECT * FROM notification_channels"
         channels = {
             name.casefold(): cls
@@ -217,15 +212,38 @@ class NotifeedDatabase(Database):
             add, endpoint=endpoint, type=type, authentication=authentication, name=name
         )
 
+    def delete_notification_channel(self, name: str):
+        add = "DELETE FROM notification_channels WHERE name = :name"
+        return self.query(add, name=name)
+
     def get_notifications(self):
         get = "SELECT * FROM notifications"
         return self.query(get)
 
-    def add_notification(self, feed: str, channel: str):
-        add = "INSERT INTO notifications (channel, feed) VALUES (:channel, :feed)"
-        results = self.query("SELECT url FROM feeds WHERE name = :name", name=feed)
-        url = next(results)["url"]
-        return self.query(add, feed=url, channel=channel)
+    def add_notifications(self, channel: str, feeds: Collection[str]):
+        names = ",".join("?" for _ in feeds)
+        results = self.query(f"SELECT url FROM feeds WHERE name in ({names})", *feeds)
+        urls = [row["url"] for row in results]
+
+        values = ",".join(["(?, ?)" for _ in urls])
+        add = f"INSERT INTO notifications (channel, feed) VALUES {values}"
+        return self.query(
+            add,
+            *itertools.chain.from_iterable(
+                itertools.zip_longest([], urls, fillvalue=channel)
+            ),
+        )
+
+    def delete_notifications(self, channel: str, feeds: Collection[str]):
+        find = f"""
+            DELETE FROM notifications
+            WHERE id IN (
+                SELECT id FROM notifications
+                LEFT JOIN feeds ON feeds.url = notifications.feed
+                WHERE feeds.name in ({','.join('?' for _ in feeds)}) AND notifications.channel = ?
+            )
+        """
+        return self.query(find, *feeds, channel)
 
     async def check_latest_post(self, feed: FeedAsync):
         await feed.load()

@@ -23,6 +23,11 @@ from notifeed.utils import condense, strip_html
 class Feed(object):
     """
     Simple interface to either an Atom or RSS feed.
+
+    Some resources:
+    https://validator.w3.org/feed/docs/atom.html
+    https://validator.w3.org/feed/docs/rss2.html
+    https://kavasmlikon.wordpress.com/2012/11/08/how-to-manually-set-up-pubsubhubbub-for-your-rssatom-feeds/
     """
 
     def __init__(self, url: str, name: str, session=None, brotli_supported=False):
@@ -139,10 +144,11 @@ class Post(object):
     Abstraction of a post from a feed.
     """
 
-    _mapping = {
+    _mappings = {
         "url": {AtomEntry: "id_", RSSItem: "link"},
         "publish_date": {AtomEntry: "updated", RSSItem: "pub_date"},
         "title": {AtomEntry: "title.value", RSSItem: "title"},
+        "id": {AtomEntry: "id_", RSSItem: "guid"},
     }
 
     def __init__(self, feed: Feed, entry: Union[AtomEntry, RSSItem]):
@@ -152,7 +158,7 @@ class Post(object):
             raise ValueError("Feed type not supported")
 
     def _get(self, name):
-        getter = operator.attrgetter(self._mapping[name][self.raw.__class__])
+        getter = operator.attrgetter(self._mappings[name][self.raw.__class__])
         return getter(self.raw)
 
     @property
@@ -168,6 +174,10 @@ class Post(object):
     @property
     def publish_date(self):
         return self._get("publish_date")
+
+    @property
+    def id(self):
+        return self._get("id")
 
     @property
     def raw_content(self):
