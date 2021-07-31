@@ -11,7 +11,7 @@ import requests
 import aiohttp
 
 # local modules
-from notifeed.feeds import Post
+from notifeed.feeds import RemotePost
 from notifeed.utils import import_subclasses
 
 # }}}
@@ -30,7 +30,7 @@ class NotificationChannel(object):
         self.session = session
         self.authentication = authentication
 
-    def notify(self, post: Post):
+    def notify(self, post: RemotePost):
         """
         Notify the channel of a new Post.
 
@@ -67,7 +67,7 @@ class NotificationChannel(object):
         resp = fetch(method, url, json=json, headers=headers)
         return resp.status_code == 200
 
-    def build(self, post: Post):
+    def build(self, post: RemotePost):
 
         """
         Build a JSON payload for a webhook notification.
@@ -98,7 +98,7 @@ class NotificationChannelAsync(NotificationChannel):
         self.name = name
         self.session = session
 
-    async def notify(self, post: Post):
+    async def notify(self, post: RemotePost):
         return await self.send_webhook(
             self.endpoint, json=self.build(post), auth_bearer=self.authentication
         )

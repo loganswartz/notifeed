@@ -3,14 +3,14 @@
 # Imports {{{
 # local modules
 from notifeed.notifications import NotificationChannelAsync
-from notifeed.feeds import Post
+from notifeed.feeds import RemotePost
 
 # }}}
 
 
 class Slack(NotificationChannelAsync):
-    def build(self, post: Post):
-        def thumbnail_element(post: Post):
+    def build(self, post: RemotePost):
+        def thumbnail_element(post: RemotePost):
             thumbnail = {}
             if post.images:
                 thumbnail = {
@@ -23,7 +23,7 @@ class Slack(NotificationChannelAsync):
 
             return thumbnail
 
-        def context_element(post: Post):
+        def context_element(post: RemotePost):
             author = next(iter(post.authors), None)
             pubdate = post.publish_date.strftime("%B %d %Y")
 

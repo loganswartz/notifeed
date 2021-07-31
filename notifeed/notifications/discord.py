@@ -8,14 +8,14 @@ from attr import __description__
 
 # local modules
 from notifeed.notifications import NotificationChannelAsync
-from notifeed.feeds import Post
+from notifeed.feeds import RemotePost
 
 # }}}
 
 
 class Discord(NotificationChannelAsync):
-    def build(self, post: Post):
-        def thumbnail_element(post: Post):
+    def build(self, post: RemotePost):
+        def thumbnail_element(post: RemotePost):
             block = {}
             if post.images:
                 block = {
@@ -24,7 +24,7 @@ class Discord(NotificationChannelAsync):
 
             return block
 
-        def author_element(post: Post):
+        def author_element(post: RemotePost):
             author = next(iter(post.authors), None)
 
             block = {}
@@ -35,7 +35,7 @@ class Discord(NotificationChannelAsync):
 
             return block
 
-        def timestamp_element(post: Post):
+        def timestamp_element(post: RemotePost):
             pubdate = post.publish_date.isoformat()
 
             block = {}

@@ -2,11 +2,10 @@
 
 # Imports {{{
 # builtins
+import aiohttp
 import textwrap
 from typing import Union
 import operator
-from urllib.parse import urlparse
-import aiohttp
 
 # 3rd party
 from atoma import parse_rss_bytes, parse_atom_bytes
@@ -15,12 +14,12 @@ from atoma.rss import RSSChannel, RSSItem
 import requests
 
 # local modules
-from notifeed.utils import condense, strip_html
+from notifeed.utils import condense, strip_html, generate_headers
 
 # }}}
 
 
-class Feed(object):
+class RemoteFeed(object):
     """
     Simple interface to either an Atom or RSS feed.
 
@@ -30,7 +29,7 @@ class Feed(object):
     https://kavasmlikon.wordpress.com/2012/11/08/how-to-manually-set-up-pubsubhubbub-for-your-rssatom-feeds/
     """
 
-    def __init__(self, url: str, name: str, session=None, brotli_supported=False):
+    def __init__(self, url: str, name: str, session=None):
         """
         Fetch a new copy of a remote RSS/Atom feed for parsing by check_feed()
         """
@@ -38,7 +37,6 @@ class Feed(object):
         self.name = name
         self._raw = None
         self.session = session
-        self.brotli_supported = brotli_supported
 
     @property
     def _feed(self):
@@ -56,30 +54,9 @@ class Feed(object):
 
     refresh = load
 
-    @property
-    def fetch_headers(self):
-        """
-        A set of headers needed by some sites to actually respond correctly.
-
-        Typically needed to avoid being stopped by anti-scraping measures.
-        """
-        headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.62 Safari/537.36",
-            "Upgrade-Insecure-Requests": "1",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate" + ", br"
-            if self.brotli_supported
-            else "",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Connection": "keep-alive",
-            "Referer": "http://www.google.com/",
-            "Host": urlparse(self.url).hostname,
-        }
-        return headers
-
     def fetch(self):
         get = self.session.get if self.session is not None else requests.get
-        resp = get(self.url, headers=self.fetch_headers)
+        resp = get(self.url, headers=generate_headers(self.url))
         try:
             return parse_atom_bytes(resp.content)
         except:
@@ -94,7 +71,7 @@ class Feed(object):
         raw = (
             self._feed.entries if isinstance(self._feed, AtomFeed) else self._feed.items
         )
-        return [Post(self, entry) for entry in raw]
+        return [RemotePost(self, entry) for entry in raw]
 
     entries = posts
 
@@ -104,7 +81,7 @@ class Feed(object):
         )
 
 
-class FeedAutoload(Feed):
+class RemoteFeedAutoload(RemoteFeed):
     @property
     def _feed(self):
         """
@@ -115,7 +92,7 @@ class FeedAutoload(Feed):
         return self._raw
 
 
-class FeedAsync(Feed):
+class RemoteFeedAsync(RemoteFeed):
     session: aiohttp.ClientSession
 
     def __init__(
@@ -123,12 +100,11 @@ class FeedAsync(Feed):
         url: str,
         name: str,
         session: aiohttp.ClientSession,
-        brotli_supported=False,
     ):
-        super().__init__(url, name, session, brotli_supported)
+        super().__init__(url, name, session)
 
     async def fetch(self):
-        async with self.session.get(self.url, headers=self.fetch_headers) as response:
+        async with self.session.get(self.url, headers=generate_headers(self.url)) as response:
             content = await response.read()
             try:
                 return parse_atom_bytes(content)
@@ -139,7 +115,7 @@ class FeedAsync(Feed):
         self._raw = await self.fetch()
 
 
-class Post(object):
+class RemotePost(object):
     """
     Abstraction of a post from a feed.
     """
@@ -151,7 +127,7 @@ class Post(object):
         "id": {AtomEntry: "id_", RSSItem: "guid"},
     }
 
-    def __init__(self, feed: Feed, entry: Union[AtomEntry, RSSItem]):
+    def __init__(self, feed: RemoteFeed, entry: Union[AtomEntry, RSSItem]):
         self.feed = feed
         self.raw = entry
         if not isinstance(entry, (AtomEntry, RSSItem)):
