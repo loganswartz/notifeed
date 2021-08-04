@@ -9,6 +9,7 @@ import pathlib
 import sys
 from textwrap import dedent
 from typing import Collection, List, Optional, Tuple
+import aiohttp
 
 # 3rd party
 import click
@@ -25,6 +26,7 @@ from notifeed.constants import DEFAULT_DB_PATH
 
 # setup logging
 log = logging.getLogger("notifeed")
+log.setLevel(logging.INFO)
 sh = logging.StreamHandler(sys.stdout)
 sh.setLevel(logging.DEBUG)
 log.addHandler(sh)
@@ -34,7 +36,10 @@ log.addHandler(sh)
 @click.option("--debug", is_flag=True)
 @click.option("--db", "db_path", type=click.Path())
 def cli(debug, db_path):
-    log.setLevel(logging.DEBUG if debug else logging.INFO)
+    if debug:
+        log.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(levelname)s: %(message)s")
+        sh.setFormatter(formatter)
     db.init(db_path if db_path is not None else DEFAULT_DB_PATH)
     Database.seed()
     db.close()
@@ -46,15 +51,15 @@ def run():
 
 
 def main():
-    poll_interval = int(Setting.get('poll_interval'))
+    poll_interval = int(Setting.get("poll_interval"))
 
-    async def check_feed(feed: RemoteFeedAsync):
+    async def check_feed(feed: RemoteFeedAsync, session: aiohttp.ClientSession):
         """
         Check a feed and fire all relevant notifications if a new post is found.
         """
         log.debug(f"Checking {feed}.")
         try:
-            found = await Feed.get(Feed.url == feed.url).check_latest_post()
+            found = await Feed.get(Feed.url == feed.url).check_latest_post(session)
             log.debug(f"{feed.name} was successfully fetched.")
         except Exception as e:
             log.error(f"Error encountered on {feed.name}: {e}")
@@ -64,12 +69,15 @@ def main():
             log.debug(f"New post found: {found}")
             log.info(f'There\'s a new {found.feed.name} post: "{found.title}"!')
 
-            notifications = list(Notification.select().where(Notification.feed == found.feed.url))
-            channels = Channel.get_channels()
-            log.debug(f"Registered notifications found: {notifications}")
+            notifications = list(
+                Notification.select().where(Notification.feed == found.feed.url)
+            )
+            channels = Channel.get_channels(session)
+            log.debug(f"Found notifications: {notifications}")
+            log.debug(f"Found channels: {channels}")
 
             for notification in notifications:
-                channel = channels[notification.channel]
+                channel = channels[notification.channel.name]
                 log.debug(f"Attempting notification on {channel.name}...")
                 resp = await channel.notify(found)
                 log.debug(f"Notification sent to {channel.name}.")
@@ -80,9 +88,10 @@ def main():
 
     async def poll():
         log.info(f"=== Check initiated at {datetime.now()} ===")
+        session = aiohttp.ClientSession()
 
-        feeds = Feed.get_feeds()
-        tasks = [check_feed(feed) for feed in feeds]
+        feeds = Feed.get_feeds(session)
+        tasks = [check_feed(feed, session) for feed in feeds]
         found = await asyncio.gather(*tasks, return_exceptions=True)
 
         partitioned = partition(
@@ -105,6 +114,8 @@ def main():
         log.debug(f"Entering sleep for {poll_interval} seconds.")
         next_check = datetime.now() + timedelta(seconds=poll_interval)
         log.debug(f"Next check occurs at {next_check}.")
+
+        await session.close()
         await asyncio.sleep(poll_interval)
 
     feeds = list(Feed.select())
@@ -177,12 +188,23 @@ def add_channel(name, endpoint, auth_token, type):
 @add.command(name="notification")
 @click.argument("channel")
 @click.argument("feeds", nargs=-1)
-def add_notification(channel, feeds):
+@click.option(
+    "-a",
+    "--all",
+    "add_all",
+    is_flag=True,
+    help="Add a notification for all existing feeds",
+)
+def add_notification(channel, feeds, add_all):
+    registered = "all feeds" if add_all else ", ".join(feeds)
+    plural = len(feeds) > 1 or (len(Feed.select()) > 1 and add_all)
     with Reporter(
-        f"Added notification for new posts to {', '.join(feeds)}!",
-        "Failed to add notification: {exception}",
+        f"Added notification{'s' if plural else ''} for new posts to {registered}!",
+        f"Failed to add notification{'s' if plural else ''}: {{exception}}",
     ):
-        Notification.add_feeds_to_channel(channel, feeds)
+        Notification.add_feeds_to_channel(
+            channel, [feed.name for feed in Feed.select()] if add_all else feeds
+        )
 
 
 @delete.command(name="feed")
@@ -261,7 +283,9 @@ def list_items(items: Collection, found_msg: str, not_found_msg: str, line_fmt: 
         log.info(line_fmt.format(**item.__data__))
 
 
-def save_post(found: RemotePost, location: pathlib.Path = pathlib.Path("~/notifeed_posts")):
+def save_post(
+    found: RemotePost, location: pathlib.Path = pathlib.Path("~/notifeed_posts")
+):
     saved = location.expanduser().resolve()
     filename = f"{found.feed.name}-{datetime.today().isoformat()}.xml"
 

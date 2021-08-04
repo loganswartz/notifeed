@@ -29,9 +29,7 @@ class Discord(NotificationChannelAsync):
 
             block = {}
             if author:
-                block = {
-                    "author": {"name": author}
-                }
+                block = {"author": {"name": author}}
 
             return block
 
@@ -40,9 +38,7 @@ class Discord(NotificationChannelAsync):
 
             block = {}
             if pubdate:
-                block = {
-                    "timestamp": pubdate
-                }
+                block = {"timestamp": pubdate}
 
             return block
 
@@ -57,7 +53,7 @@ class Discord(NotificationChannelAsync):
                     **author_element(post),
                     **timestamp_element(post),
                 },
-            ]
+            ],
         }
 
         return data

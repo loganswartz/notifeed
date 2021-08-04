@@ -11,6 +11,5 @@ import aiohttp
 # }}}
 
 
-BROTLI_SUPPORTED = find_spec('brotli') is not None
+BROTLI_SUPPORTED = find_spec("brotli") is not None
 DEFAULT_DB_PATH = pathlib.Path(__file__).resolve().parent.parent / "notifeed.db"
-AIOHTTP_SESSION = aiohttp.ClientSession()

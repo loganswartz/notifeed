@@ -104,7 +104,9 @@ class RemoteFeedAsync(RemoteFeed):
         super().__init__(url, name, session)
 
     async def fetch(self):
-        async with self.session.get(self.url, headers=generate_headers(self.url)) as response:
+        async with self.session.get(
+            self.url, headers=generate_headers(self.url)
+        ) as response:
             content = await response.read()
             try:
                 return parse_atom_bytes(content)
@@ -176,7 +178,11 @@ class RemotePost(object):
         summary = ""
 
         if isinstance(self.raw, AtomEntry):
-            item = self.raw.summary if getattr(self.raw.summary, 'value', None) else self.raw.content
+            item = (
+                self.raw.summary
+                if getattr(self.raw.summary, "value", None)
+                else self.raw.content
+            )
             summary = item.value
         elif isinstance(self.raw, RSSItem):
             summary = self.raw.description

@@ -6,6 +6,7 @@ from functools import singledispatchmethod
 import hashlib
 import logging
 from typing import Collection, Dict, Optional, overload
+import aiohttp
 
 # 3rd party
 from atoma.exceptions import FeedXMLError
@@ -21,7 +22,6 @@ from peewee import (
 # local modules
 from notifeed.feeds import RemoteFeedAsync
 from notifeed.notifications import NotificationChannel, NotificationChannelAsync
-from notifeed.constants import AIOHTTP_SESSION as session
 
 # }}}
 
@@ -69,27 +69,27 @@ class Feed(Database):
     name = TextField()
 
     @classmethod
-    def get_feeds(cls):
+    def get_feeds(cls, session: aiohttp.ClientSession):
         feeds = []
         for feed in cls.select():
             try:
-                feeds.append(feed.as_obj())
+                feeds.append(feed.as_obj(session))
             except FeedXMLError:
                 log.error(f"Failed to parse feed for {feed.name}.")
                 continue
         return feeds
 
-    def as_obj(self):
+    def as_obj(self, session: aiohttp.ClientSession):
         return RemoteFeedAsync(self.url, self.name, session)
 
-    async def check_latest_post(self):
-        feed = self.as_obj()
+    async def check_latest_post(self, session: aiohttp.ClientSession):
+        feed = self.as_obj(session)
         await feed.load()
         latest = feed.posts[0]
 
         identifier = hashlib.sha256(latest.content.encode()).hexdigest()
 
-        posts = list(self.post)
+        posts = list(self.posts)
         if posts and posts[0].content_hash == identifier:
             # nothing new
             return None
@@ -110,7 +110,9 @@ class Post(Database):
     """
 
     id = TextField(primary_key=True)
-    feed = ForeignKeyField(Feed, on_delete="CASCADE", on_update="CASCADE", backref='posts')
+    feed = ForeignKeyField(
+        Feed, on_delete="CASCADE", on_update="CASCADE", backref="posts"
+    )
     url = TextField()
     title = TextField()
     content_hash = TextField()
@@ -160,22 +162,20 @@ class Channel(Database):
     name = TextField(primary_key=True)
     type = TextField()
     endpoint = TextField()
-    authentication = TextField()
+    authentication = TextField(null=True)
 
     @classmethod
     def get_channels(
-        cls,
+        cls, session: aiohttp.ClientSession
     ) -> Dict[str, NotificationChannelAsync]:
-        return {
-            channel.type.casefold(): channel.as_obj() for channel in cls.select()
-        }
+        return {channel.name: channel.as_obj(session) for channel in cls.select()}
 
-    def as_obj(self):
-        channels = {
+    def as_obj(self, session: aiohttp.ClientSession):
+        classes = {
             name.casefold(): cls
             for name, cls in NotificationChannelAsync.get_subclasses().items()
         }
-        obj = channels[self.type.casefold()](
+        obj = classes[self.type.casefold()](
             self.name, self.endpoint, session, self.authentication
         )
         return obj
@@ -211,9 +211,7 @@ class Notification(Database):
     """
 
     id = AutoField()
-    channel = ForeignKeyField(
-        Channel, on_delete="CASCADE", on_update="CASCADE"
-    )
+    channel = ForeignKeyField(Channel, on_delete="CASCADE", on_update="CASCADE")
     feed = ForeignKeyField(Feed, on_delete="CASCADE", on_update="CASCADE")
 
     @classmethod

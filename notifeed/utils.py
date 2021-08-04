@@ -102,7 +102,7 @@ def partition(
 
 def get_traceback(exception: Exception):
     msg = format_exception(type(exception), exception, exception.__traceback__)
-    return ''.join(msg).strip()
+    return "".join(msg).strip()
 
 
 def generate_headers(url):
@@ -115,9 +115,7 @@ def generate_headers(url):
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.62 Safari/537.36",
         "Upgrade-Insecure-Requests": "1",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Encoding": "gzip, deflate" + ", br"
-        if BROTLI_SUPPORTED
-        else "",
+        "Accept-Encoding": "gzip, deflate" + ", br" if BROTLI_SUPPORTED else "",
         "Accept-Language": "en-US,en;q=0.9",
         "Connection": "keep-alive",
         "Referer": "http://www.google.com/",
