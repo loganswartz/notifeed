@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 
 # Imports {{{
-# builtins
-import time
-
-from attr import __description__
-
 # local modules
 from notifeed.notifications import NotificationChannelAsync
 from notifeed.feeds import RemotePost
