@@ -2,7 +2,6 @@
 Automatically get notifications for new posts on your favorite RSS/Atom feeds.
 
 # Installation
-Running the following will make the `notifeed` command available on your system:
 ```bash
 pip3 install notifeed
 # or
