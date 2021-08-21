@@ -1,12 +1,20 @@
 # notifeed
 Automatically get notifications for new posts on your favorite RSS/Atom feeds.
 
+# Installation
+Running the following will make the `notifeed` command available on your system:
+```
+git clone git@github.com:loganswartz/notifeed.git && pip3 install ./notifeed
+```
+
 ## Usage
 ```bash
-~/notifeed $ python3 -m notifeed -h  # for brevity, referred to as just `notifeed` from now on
+~ $ notifeed -h
 Usage: notifeed [OPTIONS] COMMAND [ARGS]...
 
 Options:
+  --debug     Show debug logging messages
+  --db PATH   Path to an SQLite database, or where to save a new one
   -h, --help  Show this message and exit.
 
 Commands:
@@ -95,10 +103,10 @@ specifically is gitignore'd to allow symlinking your own modules into an
 importable location.
 
 # Misc
-Configuration data is stored in an SQLite database file in the root of the project
-folder.
+Configuration data is stored in an SQLite database file. By default, this lives
+in the root of the project folder.
 
-## Installation
+## Service Installation
 Install the service file by symbolically linking to it from `/etc/systemd/system/`:
 ```bash
 $ sudo ln -s /path/to/notifeed/notifeed.service /etc/systemd/system/notifeed.service
@@ -111,3 +119,5 @@ You'll probably also want to start the service automatically on startup:
 ```bash
 $ sudo systemctl enable notifeed
 ```
+Once the service is running, you can setup notifications, feeds, etc as you
+would normally with the `notifeed` command.

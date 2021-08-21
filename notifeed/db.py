@@ -87,18 +87,26 @@ class Feed(Database):
         await feed.load()
         latest = feed.posts[0]
 
-        identifier = hashlib.sha256(latest.content.encode()).hexdigest()
+        latest_hash = hashlib.sha256(latest.content.encode()).hexdigest()
+        latest_stored = next(self.posts, None)
 
-        posts = list(self.posts)
-        if posts and posts[0].content_hash == identifier:
-            # nothing new
-            return None
+        if latest_stored is None:
+            ...  # no post previously saved (aka, a new DB, or the feed had no posts previously)
+        else:
+            if latest_stored.url == latest.id:
+                hashes_match = latest_stored.content_hash == latest_hash
+                if hashes_match:
+                    return None  # nothing new
+                else:
+                    ...  # latest post was updated since we last saw it
+            else:
+                ...  # new post
 
-        Post.create(
+        Post.replace(
             id=latest.id,
             url=latest.url,
             title=latest.title,
-            content_hash=identifier,
+            content_hash=latest_hash,
             feed=feed.url,
         )
         return latest

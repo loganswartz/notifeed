@@ -33,8 +33,8 @@ log.addHandler(sh)
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
-@click.option("--debug", is_flag=True)
-@click.option("--db", "db_path", type=click.Path())
+@click.option("--debug", is_flag=True, help="Show debug logging messages")
+@click.option("--db", "db_path", type=click.Path(), help="Path to an SQLite database, or where to save a new one")
 def cli(debug, db_path):
     if debug:
         log.setLevel(logging.DEBUG)
