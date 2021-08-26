@@ -7,9 +7,10 @@ import pathlib
 
 # 3rd party
 import aiohttp
+import appdirs
 
 # }}}
 
 
 BROTLI_SUPPORTED = find_spec("brotli") is not None
-DEFAULT_DB_PATH = pathlib.Path(__file__).resolve().parent.parent / "notifeed.db"
+DEFAULT_DB_PATH = pathlib.Path(appdirs.user_config_dir("notifeed")) / "notifeed.db"

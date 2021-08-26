@@ -20,7 +20,7 @@ from peewee import (
 )
 
 # local modules
-from notifeed.feeds import RemoteFeedAsync
+from notifeed.feeds import RemoteFeedAsync, RemotePost
 from notifeed.notifications import NotificationChannel, NotificationChannelAsync
 
 # }}}
@@ -85,31 +85,45 @@ class Feed(Database):
     async def check_latest_post(self, session: aiohttp.ClientSession):
         feed = self.as_obj(session)
         await feed.load()
-        latest = feed.posts[0]
+        fetched = feed.posts[0]
 
-        latest_hash = hashlib.sha256(latest.content.encode()).hexdigest()
-        latest_stored = next(self.posts, None)
+        stored: Optional[Post] = next(iter(self.posts), None)
 
-        if latest_stored is None:
-            ...  # no post previously saved (aka, a new DB, or the feed had no posts previously)
-        else:
-            if latest_stored.url == latest.id:
-                hashes_match = latest_stored.content_hash == latest_hash
-                if hashes_match:
-                    return None  # nothing new
-                else:
-                    ...  # latest post was updated since we last saw it
-            else:
-                ...  # new post
+        def save_post(post: RemotePost):
+            return Post.create(
+                id=post.id,
+                url=post.url,
+                title=post.title,
+                content_hash=post.content_hash,
+                feed=post.feed.url,
+            )
 
-        Post.replace(
-            id=latest.id,
-            url=latest.url,
-            title=latest.title,
-            content_hash=latest_hash,
-            feed=feed.url,
-        )
-        return latest
+        if stored is not None:
+            if fetched.id == stored.id:
+                hashes_match = fetched.content_hash == stored.content_hash
+                if hashes_match:  # nothing new
+                    log.debug(f"Hash for {repr(fetched.title)} matches stored hash (post is unchanged).")
+                    return None
+                else:  # latest post was updated since we last saw it
+                    log.debug(f"Latest post has been updated (content hash changed)")
+                    changes = {
+                        'url': fetched.url,
+                        'title': fetched.title,
+                        'content_hash': fetched.content_hash,
+                    }
+                    Post.update(changes).where(Post.id == stored.id).execute()
+                    return None
+            else:  # new post
+                log.debug(f"The latest post has a different ID than the stored post.")
+                save_post(fetched)
+                Post.delete().where(Post.id == stored.id).execute()
+        else:  # no post previously saved (aka, a new DB, or the feed had no posts previously)
+            log.debug(f"No saved post was found.")
+            save_post(fetched)
+
+            return fetched
+
+        return None
 
 
 class Post(Database):

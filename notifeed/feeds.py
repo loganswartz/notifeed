@@ -3,6 +3,7 @@
 # Imports {{{
 # builtins
 import aiohttp
+import hashlib
 import textwrap
 from typing import Union
 import operator
@@ -210,3 +211,7 @@ class RemotePost(object):
 
     def __repr__(self):
         return f"{self.__class__.__name__}({repr(self.title)})"
+
+    @property
+    def content_hash(self):
+        return hashlib.sha256(self.content.encode()).hexdigest()

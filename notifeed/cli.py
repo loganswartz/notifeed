@@ -40,7 +40,12 @@ def cli(debug, db_path):
         log.setLevel(logging.DEBUG)
         formatter = logging.Formatter("%(levelname)s: %(message)s")
         sh.setFormatter(formatter)
-    db.init(db_path if db_path is not None else DEFAULT_DB_PATH)
+    if db_path is None:
+        DEFAULT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        path = DEFAULT_DB_PATH
+    else:
+        path = db_path
+    db.init(path)
     Database.seed()
     db.close()
 
