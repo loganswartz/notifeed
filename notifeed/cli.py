@@ -86,7 +86,7 @@ def main():
                 log.debug(f"Attempting notification on {channel.name}...")
                 resp = await channel.notify(found)
                 log.debug(f"Notification sent to {channel.name}.")
-                log.debug(f"Response recieved: {int(resp.status)}")
+                log.debug(f"Response received: {int(resp.status)}")
 
         log.debug(f"Done checking {feed.name}.")
         return found

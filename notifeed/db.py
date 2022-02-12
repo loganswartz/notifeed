@@ -117,13 +117,12 @@ class Feed(Database):
                 log.debug(f"The latest post has a different ID than the stored post.")
                 save_post(fetched)
                 Post.delete().where(Post.id == stored.id).execute()
+                return fetched
         else:  # no post previously saved (aka, a new DB, or the feed had no posts previously)
             log.debug(f"No saved post was found.")
             save_post(fetched)
 
             return fetched
-
-        return None
 
 
 class Post(Database):
