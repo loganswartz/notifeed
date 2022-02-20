@@ -40,16 +40,14 @@ class NotificationChannel(object):
         build() method on the class instead.
         """
         return self.send_webhook(
-            self.endpoint, json=self.build(post), auth_bearer=self.authentication
+            self.endpoint, json=self.build(post)
         )
 
     def send_webhook(
         self,
         url: str,
-        json: dict,
-        headers: dict = {},
-        auth_bearer: Optional[str] = None,
         method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "POST",
+        **kwargs,
     ):
         """
         Simple helper for sending webhooks.
@@ -57,14 +55,14 @@ class NotificationChannel(object):
         If you pass in an auth_bearer parameter, that token will be automatically
         added as a header on the request.
         """
-        base = {}
-        if auth_bearer is not None:
-            base = {"Authorization": f"Bearer: {auth_bearer}"}
+        headers = kwargs.get('headers', {})
+        if self.authentication is not None:
+            headers["Authorization"] = f"Bearer: {self.authentication}"
 
-        headers = {**base, **headers}
+        kwargs['headers'] = headers
 
-        fetch = self.session.request or requests.request
-        resp = fetch(method, url, json=json, headers=headers)
+        fetch = self.session.request if self.session else requests.request
+        resp = fetch(method, url, **kwargs)
         return resp.status_code == 200
 
     def build(self, post: RemotePost):
@@ -106,16 +104,14 @@ class NotificationChannelAsync(NotificationChannel):
     async def send_webhook(
         self,
         url: str,
-        json: dict,
-        headers: dict = {},
-        auth_bearer: Optional[str] = None,
         method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "POST",
+        **kwargs,
     ):
-        base = {}
-        if auth_bearer is not None:
-            base = {"Authorization": f"Bearer: {auth_bearer}"}
+        headers = kwargs.get('headers', {})
+        if self.authentication is not None:
+            headers["Authorization"] = f"Bearer: {self.authentication}"
 
-        headers = {**base, **headers}
+        kwargs['headers'] = headers
 
-        resp = await self.session.request(method, url, json=json, headers=headers)
+        resp = await self.session.request(method, url, **kwargs)
         return resp

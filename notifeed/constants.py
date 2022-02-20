@@ -14,3 +14,4 @@ import appdirs
 
 BROTLI_SUPPORTED = find_spec("brotli") is not None
 DEFAULT_DB_PATH = pathlib.Path(appdirs.user_config_dir("notifeed")) / "notifeed.db"
+DEFAULT_POLL_INTERVAL = 15  # minutes
