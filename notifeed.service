@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=www-data
-ExecStart=/usr/bin/python3 -u -m notifeed run
+ExecStart=notifeed run
 
 [Install]
 WantedBy=multi-user.target

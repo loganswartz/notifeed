@@ -5,10 +5,7 @@
 import logging
 
 # 3rd party
-from peewee import (
-    TextField,
-    ForeignKeyField,
-)
+from peewee import ForeignKeyField, TextField
 
 # local modules
 from notifeed.db.base import Database

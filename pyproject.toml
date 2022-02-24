@@ -1,3 +1,13 @@
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.isort]
+profile = "black"
+known_first_party = ["notifeed"]
+dedup_headings = true
+
+[tool.isort.import_headings]
+stdlib = "builtins"
+thirdparty = "3rd party"
+firstparty = "local modules"

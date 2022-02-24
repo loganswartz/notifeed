@@ -3,7 +3,7 @@
 # Imports {{{
 # local modules
 from notifeed.notifications import NotificationChannelAsync
-from notifeed.feeds import RemotePost
+from notifeed.remote import RemotePost
 
 # }}}
 

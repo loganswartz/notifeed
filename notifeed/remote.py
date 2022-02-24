@@ -2,22 +2,34 @@
 
 # Imports {{{
 # builtins
-import aiohttp
 import hashlib
-import textwrap
-from typing import Union
+import logging
 import operator
+import textwrap
+from typing import TYPE_CHECKING, Union
 
 # 3rd party
-from atoma import parse_rss_bytes, parse_atom_bytes
-from atoma.atom import AtomFeed, AtomEntry
-from atoma.rss import RSSChannel, RSSItem
+import aiohttp
 import requests
+from atoma import parse_atom_bytes, parse_rss_bytes
+from atoma.atom import AtomEntry, AtomFeed
+from atoma.rss import RSSChannel, RSSItem
+from peewee import DoesNotExist
 
 # local modules
-from notifeed.utils import condense, strip_html, generate_headers
+from notifeed.enums import FeedEvent
+from notifeed.utils import condense, find, generate_headers, strip_html
+
+if TYPE_CHECKING:
+    # local modules
+    from notifeed.db.feed import Feed
+    from notifeed.db.post import Post
+    from notifeed.structs import FeedUpdate, PostUpdate
 
 # }}}
+
+
+log = logging.getLogger(__name__)
 
 
 class RemoteFeed(object):
@@ -76,6 +88,67 @@ class RemoteFeed(object):
 
     entries = posts
 
+    def _check(self):
+        # fetch fresh version of feed before
+        log.debug(f"Checking {self}.")
+
+        db_feed: Feed = Feed.get_by_id(self.url)
+        db_latest = next(iter(db_feed.posts), None)
+
+        if db_latest is None:
+            if self.posts:
+                # no post previously saved (aka, a new DB, or the feed had no posts previously)
+                event = FeedEvent.New | FeedEvent.FirstPost
+                new = self.posts
+                log.debug(f"No saved post was found.")
+            else:
+                event = FeedEvent.NoChange
+                new = []
+                log.debug(f"No saved post was found and there are no remote posts.")
+
+            return FeedUpdate(self, [PostUpdate(post, event) for post in new])
+
+        # where in the fetched feed is the latest post we remember?
+        # all posts after that must be new or updated
+        idx = find(self.posts, lambda item: item.id == db_latest.id)
+        # if we can't find the post, assume only the latest is new
+        # (this way we avoid blitzing people with a million notifications)
+        slice = -1 if idx is None else idx
+        new = self.posts[slice:]
+
+        posts = []
+        for post in new:
+            try:
+                in_db = Post.get_by_id(post.id)
+            except DoesNotExist:
+                in_db = False
+
+            if in_db:
+                hashes_match = post.content_hash == in_db.content_hash
+                if hashes_match:  # nothing new
+                    event = FeedEvent.NoChange
+                    log.debug(
+                        f"Hash for {repr(post.title)} matches stored hash (post is unchanged)."
+                    )
+                else:  # latest post was updated since we last saw it
+                    event = FeedEvent.Updated
+                    log.debug(f"Latest post has been updated (content hash changed)")
+            else:  # new post
+                event = FeedEvent.New
+                log.debug(f"The latest post has a different ID than the stored post.")
+
+            posts.append(PostUpdate(post, event))
+
+        return FeedUpdate(self, posts)
+
+    def check(self):
+        """
+        Check for updates to the feed.
+        """
+        self.load()
+
+        return self._check()
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(name={repr(self.name)}, url={repr(self.url)})"
@@ -116,6 +189,14 @@ class RemoteFeedAsync(RemoteFeed):
 
     async def load(self):
         self._raw = await self.fetch()
+
+    async def check(self):
+        """
+        Check for updates to the feed.
+        """
+        await self.load()
+
+        return self._check()
 
 
 class RemotePost(object):

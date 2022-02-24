@@ -1,3 +1,4 @@
 #!/usr/bin/env python3
 
-from notifeed.feeds import RemoteFeed, RemoteFeedAsync, RemoteFeedAutoload, RemotePost
+# local modules
+from notifeed.remote import RemoteFeed, RemoteFeedAsync, RemoteFeedAutoload, RemotePost

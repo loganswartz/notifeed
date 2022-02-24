@@ -2,19 +2,17 @@
 
 # Imports {{{
 # builtins
-from functools import singledispatchmethod
 import logging
+from functools import singledispatchmethod
 from typing import Dict, Optional
-import aiohttp
 
 # 3rd party
-from peewee import (
-    TextField,
-)
+import aiohttp
+from peewee import TextField
 
 # local modules
-from notifeed.notifications import NotificationChannel, NotificationChannelAsync
 from notifeed.db.base import Database
+from notifeed.notifications import NotificationChannel, NotificationChannelAsync
 
 # }}}
 

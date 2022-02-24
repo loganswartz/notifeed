@@ -3,23 +3,22 @@
 # Imports {{{
 # builtins
 import asyncio
-from datetime import datetime, timedelta
 import logging
 import sys
+from datetime import datetime, timedelta
 from textwrap import dedent
-from typing import Collection, List, Optional, Tuple
-import aiohttp
 
 # 3rd party
+import aiohttp
 import click
 from peewee import SqliteDatabase
 
 # local modules
-from notifeed.db import Channel, Database, Setting, db_proxy, Feed, Notification
-from notifeed.feeds import RemoteFeedAsync, RemotePost
+from notifeed.constants import DEFAULT_DB_PATH, DEFAULT_SETTINGS
+from notifeed.db import Channel, Database, Feed, Notification, Setting, db_proxy
 from notifeed.notifications import NotificationChannel, NotificationChannelAsync
-from notifeed.utils import get_traceback, partition
-from notifeed.constants import DEFAULT_DB_PATH
+from notifeed.remote import RemoteFeedAsync
+from notifeed.utils import Reporter, get_traceback, list_items, pool
 
 # }}}
 
@@ -51,6 +50,10 @@ def cli(debug, db_path):
     else:
         path = db_path
 
+    init_db(path)
+
+
+def init_db(path):
     # TODO: allow more DB connection types
     db = SqliteDatabase(
         path,
@@ -73,78 +76,46 @@ def run():
     main()
 
 
-async def check_feed(feed: RemoteFeedAsync, session: aiohttp.ClientSession):
-    """
-    Check a feed and fire all relevant notifications if a new post is found.
-    """
-    log.debug(f"Checking {feed}.")
-    try:
-        found = await Feed.get(Feed.url == feed.url).check_latest_post(session)
-        log.debug(f"{feed.name} was successfully fetched.")
-    except Exception as e:
-        log.error(f"Error encountered on {feed.name}: {e}")
-        return None
-
-    if found is not None:
-        log.debug(f"New post found: {found}")
-        log.info(f'There\'s a new {found.feed.name} post: "{found.title}"!')
-
-        notifications = list(
-            Notification.select().where(Notification.feed == found.feed.url)
-        )
-        channels = Channel.get_channels(session)
-        log.debug(f"Found notifications: {notifications}")
-        log.debug(f"Found channels: {channels}")
-
-        for notification in notifications:
-            channel = channels[notification.channel.name]
-            log.debug(f"Attempting notification on {channel.name}...")
-            resp = await channel.notify(found)
-            log.debug(
-                f"Notification sent to {channel.name},\n"
-                f"Response received: {int(resp.status)}"
-            )
-
-    log.debug(f"Done checking {feed.name}.")
-    return found
+async def check_and_notify(feed: RemoteFeedAsync):
+    updates = await feed.check()
+    await updates.notify(feed.session)
+    return updates
 
 
 async def poll():
     log.info(f"=== Check initiated at {datetime.now()} ===")
     session = aiohttp.ClientSession()
-    poll_interval = int(Setting.get("poll_interval"))
+    interval: int = Setting["poll_interval"]
 
     feeds = Feed.get_feeds(session)
-    tasks = [check_feed(feed, session) for feed in feeds]
-    found = await asyncio.gather(*tasks, return_exceptions=True)
-
-    partitioned = partition(
-        zip(feeds, found), lambda item: isinstance(item[1], Exception)
-    )
-    exceptions: List[Tuple[RemoteFeedAsync, Exception]] = partitioned.get(True, [])
-    results: List[RemotePost] = [
-        result for _, result in partitioned.get(False, []) if result is not None
-    ]
+    tasks = [check_and_notify(feed) for feed in feeds]
+    results, exceptions = await pool(*tasks, keys=feeds)
 
     for feed, exception in exceptions:
         traceback = get_traceback(exception)
         log.error(f"Encountered exception for {feed.name}:\n{traceback}")
 
-    if not results:
+    updates = [tpl[1] for tpl in results]
+    if not any(updates):
         log.info("No new posts found.")
     else:
         log.info("Finished checking all feeds.")
 
-    log.debug(f"Entering sleep for {poll_interval} seconds.")
-    next_check = datetime.now() + timedelta(seconds=poll_interval)
+    log.debug(f"Entering sleep for {interval} seconds.")
+    next_check = datetime.now() + timedelta(seconds=interval)
     log.debug(f"Next check occurs at {next_check}.")
 
     await session.close()
-    await asyncio.sleep(poll_interval)
+    await asyncio.sleep(interval)
+
+
+async def poll_forever():
+    while True:
+        await poll()
 
 
 def main():
-    poll_interval = int(Setting.get("poll_interval"))
+    interval: int = Setting["poll_interval"]
 
     feeds = list(Feed.select())
     notifications = list(Notification.select())
@@ -154,7 +125,7 @@ def main():
     =========== Notifeed ===========
      * Feeds configured: {len(feeds)}
      * Notifications configured: {len(notifications)}
-     * Poll Interval: {poll_interval / 60} minutes
+     * Poll Interval: {interval / 60} minutes
     ================================
 
     Polling started!
@@ -162,8 +133,7 @@ def main():
     )
     log.info(preamble)
 
-    while True:
-        asyncio.run(poll())
+    asyncio.run(poll_forever())
 
 
 @cli.group(name="list")
@@ -221,13 +191,13 @@ def add_channel(name, endpoint, auth_token, type):
     "--all",
     "add_all",
     is_flag=True,
-    help="Add a notification for all existing feeds",
+    help="Add the notification for all existing feeds",
 )
 @click.option(
     "-u",
     "--notify-on-update",
     is_flag=True,
-    help="Send a notification when a feed's latest post is edited.",
+    help="Send a notification when a feed's latest post is edited, instead of only when a new post is found.",
 )
 def add_notification(channel, feeds, add_all, notify_on_update):
     registered = "all feeds" if add_all else ", ".join(feeds)
@@ -302,36 +272,8 @@ def list_notifications():
 
 
 @cli.command(name="set")
-@click.argument("key", type=click.Choice(["poll_interval"]))
+@click.argument("key", type=click.Choice(list(DEFAULT_SETTINGS.keys())))
 @click.argument("value")
 def set_settings(key, value):
     with Reporter(f"Set {key} to {value}!", f"Failed to set {key}: {{exception}}"):
         Setting[key] = value
-
-
-def list_items(items: Collection, found_msg: str, not_found_msg: str, line_fmt: str):
-    if not items:
-        log.info(not_found_msg)
-        sys.exit(0)
-
-    log.info(found_msg)
-    for item in items:
-        log.info(line_fmt.format(**item.__data__))
-
-
-class Reporter(object):
-    def __init__(self, success: str, failure: str, pre: Optional[str] = None):
-        self.pre = pre
-        self.success = success
-        self.failure = failure
-
-    def __enter__(self):
-        if self.pre is not None:
-            log.info(self.pre)
-
-    def __exit__(self, exception_cls, exception, traceback):
-        if exception is None:
-            log.info(self.success)
-        else:
-            log.error(self.failure.format(exception=exception))
-            return True  # suppress traceback

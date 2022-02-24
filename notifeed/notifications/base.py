@@ -3,15 +3,15 @@
 # Imports {{{
 # builtins
 import inspect
-from typing import Optional, Literal
 import pathlib
+from typing import Literal, Optional
 
 # 3rd party
-import requests
 import aiohttp
+import requests
 
 # local modules
-from notifeed.feeds import RemotePost
+from notifeed.remote import RemotePost
 from notifeed.utils import import_subclasses
 
 # }}}
@@ -39,9 +39,7 @@ class NotificationChannel(object):
         to implement a notification channel that uses webhooks, override the
         build() method on the class instead.
         """
-        return self.send_webhook(
-            self.endpoint, json=self.build(post)
-        )
+        return self.send_webhook(self.endpoint, json=self.build(post))
 
     def send_webhook(
         self,
@@ -55,11 +53,11 @@ class NotificationChannel(object):
         If you pass in an auth_bearer parameter, that token will be automatically
         added as a header on the request.
         """
-        headers = kwargs.get('headers', {})
+        headers = kwargs.get("headers", {})
         if self.authentication is not None:
             headers["Authorization"] = f"Bearer: {self.authentication}"
 
-        kwargs['headers'] = headers
+        kwargs["headers"] = headers
 
         fetch = self.session.request if self.session else requests.request
         resp = fetch(method, url, **kwargs)
@@ -107,11 +105,11 @@ class NotificationChannelAsync(NotificationChannel):
         method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "POST",
         **kwargs,
     ):
-        headers = kwargs.get('headers', {})
+        headers = kwargs.get("headers", {})
         if self.authentication is not None:
             headers["Authorization"] = f"Bearer: {self.authentication}"
 
-        kwargs['headers'] = headers
+        kwargs["headers"] = headers
 
         resp = await self.session.request(method, url, **kwargs)
         return resp
