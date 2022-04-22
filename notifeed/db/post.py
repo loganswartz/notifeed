@@ -22,10 +22,10 @@ class Post(Database):
     An individual post / entry of a feed.
     """
 
-    id = TextField(primary_key=True)
-    feed = ForeignKeyField(
+    id: str = TextField(primary_key=True)  # type: ignore
+    feed: Feed = ForeignKeyField(  # type: ignore
         Feed, on_delete="CASCADE", on_update="CASCADE", backref="posts"
     )
-    url = TextField()
-    title = TextField()
-    content_hash = TextField()
+    url: str = TextField()  # type: ignore
+    title: str = TextField()  # type: ignore
+    content_hash: str = TextField()  # type: ignore

@@ -25,10 +25,10 @@ class Channel(Database):
     A channel through which a notification can be sent.
     """
 
-    name = TextField(primary_key=True)
-    type = TextField()
-    endpoint = TextField()
-    authentication = TextField(null=True)
+    name: str = TextField(primary_key=True)  # type: ignore
+    type: str = TextField()  # type: ignore
+    endpoint: str = TextField()  # type: ignore
+    authentication: str = TextField(null=True)  # type: ignore
 
     @classmethod
     def get_channels(
@@ -48,7 +48,10 @@ class Channel(Database):
 
     @singledispatchmethod
     @classmethod
-    def add(cls, arg):
+    def add(cls):
+        """
+        Add a new notification channel.
+        """
         raise NotImplementedError()
 
     @add.register(NotificationChannel)

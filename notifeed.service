@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=www-data
-ExecStart=notifeed run
+ExecStart=notifeed --debug run
 
 [Install]
 WantedBy=multi-user.target

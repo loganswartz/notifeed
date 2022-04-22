@@ -3,7 +3,7 @@
 # Imports {{{
 # builtins
 import logging
-from typing import Any, overload
+from typing import Any
 
 # 3rd party
 from peewee import CharField, Model, PostgresqlDatabase, SqliteDatabase
@@ -86,16 +86,18 @@ class KeyValueStore(KeyValue):
 
             @classmethod
             def seed(cls):
-                # only seed values if they don't already exist
-                sentinel = object()
-                for k, v in DEFAULT_SETTINGS.items():
-                    if cls.get(k, sentinel) is sentinel:
-                        cls[k] = v
+                cls.create_table()
 
         return KeyValue
 
     def __getitem__(self, expr) -> Any:
-        return super().__getitem__(expr)
+        try:
+            return super().__getitem__(expr)
+        except KeyError:
+            if expr not in DEFAULT_SETTINGS:
+                raise
+
+            return DEFAULT_SETTINGS[expr]
 
     def get(self, key, default=None) -> Any:
         return super().get(key, default)

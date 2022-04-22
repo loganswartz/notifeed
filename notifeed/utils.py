@@ -15,15 +15,17 @@ from traceback import format_exception
 from typing import (
     Any,
     Callable,
-    Collection,
     Coroutine,
     Dict,
     Iterable,
     List,
     Optional,
+    Protocol,
+    Sized,
     Tuple,
     Type,
     TypeVar,
+    Union,
 )
 from urllib.parse import urlparse
 
@@ -59,7 +61,7 @@ def condense(text: str) -> str:
     return "\n\n".join(filled)
 
 
-def list_items(items: Collection, found_msg: str, not_found_msg: str, line_fmt: str):
+def list_items(items: Iterable, found_msg: str, not_found_msg: str, line_fmt: str):
     if not items:
         log.info(not_found_msg)
         sys.exit(0)
@@ -153,7 +155,15 @@ def import_subclasses(
 T = TypeVar("T")
 
 
-def find(lst: List[T], test: Callable[[T], bool]) -> Optional[int]:
+class Boolable(Protocol):
+    def __bool__(self) -> bool:
+        ...
+
+
+BoolLike = Union[Sized, Boolable, str, int, list, tuple, bool, None]
+
+
+def find(lst: List[T], test: Callable[[T], BoolLike]) -> Optional[int]:
     return next((idx for idx, item in enumerate(lst) if test(item)), None)
 
 

@@ -67,6 +67,7 @@ def init_db(path):
     )
 
     db_proxy.initialize(db)
+    Setting.model.seed()
     Database.seed()
     db_proxy.close()
 
@@ -172,7 +173,7 @@ def add_feed(name, url):
     "-t",
     "--type",
     type=click.Choice(
-        NotificationChannelAsync.get_subclasses().keys(), case_sensitive=False
+        list(NotificationChannelAsync.get_subclasses().keys()), case_sensitive=False
     ),
     prompt=f"What type of channel is this?",
 )

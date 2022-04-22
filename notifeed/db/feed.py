@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 # Imports {{{
+from __future__ import annotations
+
 # builtins
 import logging
-from typing import List, Type, TypeVar, overload
+from typing import TYPE_CHECKING, List, Type, TypeVar, overload
 
 # 3rd party
 import aiohttp
@@ -13,6 +15,10 @@ from peewee import TextField
 # local modules
 from notifeed.db.base import Database
 from notifeed.remote import RemoteFeed, RemoteFeedAsync
+
+if TYPE_CHECKING:
+    # local modules
+    from notifeed.db.post import Post
 
 # }}}
 
@@ -28,13 +34,14 @@ class Feed(Database):
     An Atom or RSS feed to monitor.
     """
 
-    url = TextField(primary_key=True)
-    name = TextField()
+    url: str = TextField(primary_key=True)  # type: ignore
+    name: str = TextField()  # type: ignore
+    posts: List[Post]
 
     @classmethod
     def get_feeds(cls, session: aiohttp.ClientSession) -> List[RemoteFeedAsync]:
         feeds = []
-        configured: List[Feed] = cls.select()
+        configured: List[Feed] = list(cls.select())
         for feed in configured:
             try:
                 obj = feed.as_obj(session)

@@ -6,7 +6,7 @@ import hashlib
 import logging
 import operator
 import textwrap
-from typing import TYPE_CHECKING, Union
+from typing import Union
 
 # 3rd party
 import aiohttp
@@ -19,12 +19,6 @@ from peewee import DoesNotExist
 # local modules
 from notifeed.enums import FeedEvent
 from notifeed.utils import condense, find, generate_headers, strip_html
-
-if TYPE_CHECKING:
-    # local modules
-    from notifeed.db.feed import Feed
-    from notifeed.db.post import Post
-    from notifeed.structs import FeedUpdate, PostUpdate
 
 # }}}
 
@@ -81,6 +75,12 @@ class RemoteFeed(object):
 
     @property
     def posts(self):
+        """
+        Posts found on the feed.
+
+        Sorted in descending order, so the first element of the list is the
+        latest post.
+        """
         raw = (
             self._feed.entries if isinstance(self._feed, AtomFeed) else self._feed.items
         )
@@ -89,35 +89,39 @@ class RemoteFeed(object):
     entries = posts
 
     def _check(self):
+        # local modules
+        from notifeed.db.feed import Feed
+        from notifeed.db.post import Post
+        from notifeed.structs import FeedUpdate, PostUpdate
+
         # fetch fresh version of feed before
         log.debug(f"Checking {self}.")
 
         db_feed: Feed = Feed.get_by_id(self.url)
         db_latest = next(iter(db_feed.posts), None)
 
-        if db_latest is None:
-            if self.posts:
-                # no post previously saved (aka, a new DB, or the feed had no posts previously)
-                event = FeedEvent.New | FeedEvent.FirstPost
-                new = self.posts
-                log.debug(f"No saved post was found.")
-            else:
-                event = FeedEvent.NoChange
-                new = []
-                log.debug(f"No saved post was found and there are no remote posts.")
+        if not self.posts:
+            log.debug(f"No remote posts were found.")
 
-            return FeedUpdate(self, [PostUpdate(post, event) for post in new])
+            return FeedUpdate(self, [])
 
         # where in the fetched feed is the latest post we remember?
         # all posts after that must be new or updated
-        idx = find(self.posts, lambda item: item.id == db_latest.id)
+        idx = find(
+            self.posts,
+            lambda item: item.id == db_latest.id if db_latest is not None else None,
+        )
+        log.debug(f"Found index: {idx}")
+        log.debug(f"Posts on remote feed: {self.posts}")
         # if we can't find the post, assume only the latest is new
         # (this way we avoid blitzing people with a million notifications)
-        slice = -1 if idx is None else idx
-        new = self.posts[slice:]
+        slice = 0 if idx is None else idx
+        new = self.posts[:slice]
 
         posts = []
-        for post in new:
+        for i, post in enumerate(new):
+            log.debug(f"Determining status of {post} (ID: {repr(post.id)})")
+
             try:
                 in_db = Post.get_by_id(post.id)
             except DoesNotExist:
@@ -133,6 +137,9 @@ class RemoteFeed(object):
                 else:  # latest post was updated since we last saw it
                     event = FeedEvent.Updated
                     log.debug(f"Latest post has been updated (content hash changed)")
+            elif i == len(new):
+                # no post previously saved (aka, a new DB, or the feed had no posts previously)
+                event = FeedEvent.New | FeedEvent.FirstPost
             else:  # new post
                 event = FeedEvent.New
                 log.debug(f"The latest post has a different ID than the stored post.")

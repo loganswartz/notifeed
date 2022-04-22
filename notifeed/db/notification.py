@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Collection
 
 # 3rd party
 import aiohttp
+from aiohttp.client_reqrep import ClientResponse
 from peewee import AutoField, BooleanField, ForeignKeyField
 
 # local modules
@@ -34,10 +35,10 @@ class Notification(Database):
     A coupling of a notification channel and a feed.
     """
 
-    id = AutoField()
-    channel = ForeignKeyField(Channel, on_delete="CASCADE", on_update="CASCADE")
-    feed = ForeignKeyField(Feed, on_delete="CASCADE", on_update="CASCADE")
-    notify_on_update = BooleanField(default=False)
+    id: int = AutoField()  # type: ignore
+    channel: Channel = ForeignKeyField(Channel, on_delete="CASCADE", on_update="CASCADE")  # type: ignore
+    feed: Feed = ForeignKeyField(Feed, on_delete="CASCADE", on_update="CASCADE")  # type: ignore
+    notify_on_update: bool = BooleanField(default=False)  # type: ignore
 
     @classmethod
     def delete_all_for_channel(cls, name: str):
@@ -69,21 +70,22 @@ class Notification(Database):
 
         log.debug(f"Attempting notification on {channel.name}...")
 
-        resp = None
+        resp: ClientResponse = None  # type: ignore
         tries: int = Setting["retry_limit"]
-        for _ in range(max(tries, 1)):
+        for i in range(max(tries, 1)):
+            log.info(f"Attempt #{i}:")
             resp = await channel.notify(update.post)
+            log.info(resp)
+            log.info(repr(resp.status))
             # retry if rate limited
             if resp.status != 429:
                 break
             await asyncio.sleep(5)
 
-        if resp:
-            log.debug(
-                f"Notification sent to {channel.name},\n"
-                f"Response received: {int(resp.status)}"
-            )
+        if resp.ok:
+            log.debug(f"Notification sent to {channel.name} ({int(resp.status)}).")
         else:
-            log.debug(f"Failed to send notification to {channel.name}.")
+            raw = await resp.text()
+            log.debug(f"Failed to send notification to {channel.name}: {repr(raw)}.")
 
         return resp

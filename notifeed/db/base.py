@@ -3,6 +3,7 @@
 # Imports {{{
 # builtins
 import logging
+from typing import List, Protocol, Type, Union
 
 # 3rd party
 from peewee import DatabaseProxy, Model, make_snake_case
@@ -31,7 +32,10 @@ class Database(Model):
     def seed(cls):
         subclasses = cls.__subclasses__()
         nonexistent = [subcls for subcls in subclasses if not subcls.table_exists()]
-        cls._meta.database.create_tables(nonexistent)
+
+        if cls._meta and cls._meta.database:
+            cls._meta.database.create_tables(nonexistent)
+
         for subcls in nonexistent:
             if hasattr(subcls, "seed"):
                 subcls.seed()

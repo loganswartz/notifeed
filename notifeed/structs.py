@@ -62,10 +62,11 @@ class PostUpdate(NamedTuple):
 
     async def notify(self, session: aiohttp.ClientSession):
         log.debug(f"New post found: {self.post}")
+        log.debug(f"Event type: {self.event_type}")
         log.info(f'There\'s a new {self.post.feed.name} post: "{self.post.title}"!')
 
         notifications: List[Notification] = list(
-            Notification.select().where(Notification.feed == self.feed.url)
+            Notification.select().where(Notification.feed == self.post.feed.url)
         )
         channels = Channel.get_channels(session)
         log.debug(f"Found notifications: {notifications}")
@@ -96,8 +97,10 @@ class FeedUpdate(NamedTuple):
             return
 
         log.debug(f"Processing updates for {self.feed.name}...")
+        log.debug(f"{len(self.posts)} updates found.")
 
-        tasks = (update.notify(session) for update in self.posts)
-        await asyncio.gather(*tasks)
+        # ensure notifications for all new posts are sent in correct order
+        for update in reversed(self.posts):
+            await update.notify(session)
 
         log.debug(f"Finished sending all notifications for {self.feed.name}.")
