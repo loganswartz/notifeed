@@ -13,5 +13,6 @@ class Ntfy(NotificationChannelAsync):
         headers = {
             "Title": f"{post.feed.name} - {post.title}",
             "Click": post.link,
+            "Actions": ", ".join(['view', 'Go to post', post.link]),
         }
         return self.send_webhook(self.endpoint, headers=headers, data=post.summary)

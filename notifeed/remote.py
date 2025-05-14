@@ -115,7 +115,7 @@ class RemoteFeed(object):
         log.debug(f"Posts on remote feed: {self.posts}")
         # if we can't find the post, assume only the latest is new
         # (this way we avoid blitzing people with a million notifications)
-        slice = 0 if idx is None else idx
+        slice = 1 if idx is None else idx
         new = self.posts[:slice]
 
         posts = []

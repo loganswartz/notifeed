@@ -217,17 +217,19 @@ def add_notification(channel, feeds, add_all, notify_on_update):
 @delete.command(name="feed")
 @click.argument("name")
 def delete_feed(name):
-    feed = Feed.get(Feed.name == name)
+    feed: Feed = Feed.get(Feed.name == name)
     with Reporter(f"Deleted {name}!", "Failed to delete feed: {exception}"):
         if feed is not None:
-            Feed.delete().execute()
+            feed.delete_instance()
 
 
 @delete.command(name="channel")
 @click.argument("name")
 def delete_channel(name):
+    channel: Channel = Channel.get(Channel.name == name)
     with Reporter(f"Deleted {name}!", "Failed to delete channel: {exception}"):
-        Channel.delete(Channel.name == name).execute()
+        if channel is not None:
+            channel.delete_instance()
 
 
 @delete.command(name="notification")
